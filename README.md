@@ -10,98 +10,129 @@
 
 ---
 
-## Overview
+## Executive Summary & Engineering Motivation
 
-In an era where generative AI can write code, compose music, and generate photorealistic video in seconds, designing physical robots remains painfully stuck in the past. 
+In an era where generative AI can write code, compose music, and generate photorealistic video in seconds, designing physical robots remains painfully stuck in the past.
 
-During in-depth user interviews with mechanical engineering researchers and robotics hardware practitioners, we identified a persistent, costly bottleneck: **the brutal gap between digital kinematics and physical dynamics.** 
+During in-depth user interviews with mechanical engineering researchers and robotics hardware practitioners, we identified a persistent, costly bottleneck: **the brutal gap between digital kinematics and physical dynamics.**
 
-In conventional robot design, an engineer starts with a target motion in software, but transforming that trajectory into real hardware takes weeks of manual calculation. Engineers must manually size motors, select gear ratios, evaluate thermal duty cycles, and calculate dynamic cantilever bending moments across spreadsheets. Despite these calculations, physical prototypes routinely fail during initial testing: an actuator that appeared sufficient on paper burns out under continuous thermal load, or joint gearboxes strip under sudden inertial spikes, causing the manipulator to sag or drop its payload.
+In conventional robot development, an engineer starts with a target motion in software. But transforming that digital trajectory into working physical hardware takes weeks of manual calculation. Engineers must manually size actuators, select planetary gear ratios, calculate thermal duty cycles, and evaluate dynamic cantilever bending moments across spreadsheets. Despite these calculations, physical prototypes routinely fail during initial testing: an actuator that appeared sufficient on paper burns out under continuous thermal load, or joint gearboxes strip under sudden inertial spikes, causing the manipulator to sag or drop its payload.
 
-**MotionFit eliminates this bottleneck.** It is an autonomous physical AI co-pilot that converts casual human video demonstrations into verified, buildable robot hardware backed by real-world off-the-shelf components and rigid-body multi-physics simulation.
+Worse, when an engineer tries to fix a failing joint by swapping in a larger motor, the added motor mass introduces a **parasitic weight spiral**: the heavier motor overloads every upstream joint, forcing larger motors all the way down to the base and quickly exceeding weight and budget limits.
+
+**MotionFit solves this chronic problem.** It is an autonomous physical AI co-pilot that converts casual human video demonstrations into verified, buildable robot hardware backed by real-world off-the-shelf components, rigid-body multi-physics simulation, and deep engineering reasoning powered by Google Gemini 4 Argon.
 
 ---
 
-## Key Highlights
+## Why Gemini 4 Argon? (The Autonomous Mechanical Engineer)
 
-- **User-Centric Engineering Motivation**: Born from direct interviews with mechanical engineers who lose weeks sizing actuators and dealing with prototype burnout caused by parasitic mass spirals.
-- **On-Device Multimodal Understanding**: MediaPipe Tasks Vision extracts 3D skeletal landmarks locally in the browser with zero cloud latency and complete user privacy.
-- **Closed-Loop Rigid-Body Dynamics in MuJoCo 3.3.0**: Simulates the synthesized manipulator under gravity, dynamic inertia, and electro-mechanical actuator droop curves on a high-frequency 500 Hz simulation grid.
-- **Deterministic 17-Point Engineering Referee**: Audits root-mean-square tracking accuracy, peak torque margins, continuous thermal thresholds, velocity saturation, and budget constraints before any design is certified.
-- **Deep Root-Cause Hardware Reasoning with Gemini 4 Argon**: Uses high-level extended thinking to diagnose failures and navigate verified hardware catalogs (Dynamixel, T-Motor, APEX Dynamics), preventing destructive mass accumulation.
-- **Interactive 3D Digital Twin**: Live Three.js visualization that physically swaps prototype links, snaps golden planetary gearbox collars into place, and displays real physics droop versus certified tracking.
+Conventional large language models are notorious for failing at physical hardware design. When asked to fix an overloaded robot joint, standard LLMs suffer from three critical flaws:
+1. **Greedy Scaling Hallucination**: They naively suggest "use a bigger motor," ignoring that motor mass compounds non-linearly across upstream links (the parasitic mass spiral).
+2. **Catalog Hallucination**: They invent non-existent actuators with physically impossible power densities or imaginary part numbers.
+3. **Inability to Reason over Dynamic Telemetry**: They cannot interpret high-frequency time-series joint torque derivatives, thermal root-mean-square loads, and tracking error signatures.
+
+**Gemini 4 Argon is specifically architected to overcome these fundamental limitations:**
+
+### 1. High-Level Extended Thinking for Multi-Objective Trade-Offs
+Hardware optimization is coupled and non-linear. Joint torque, continuous thermal dissipation, structural deflection, and cost cannot be solved independently. Powered by high-level extended thinking (`thinking_level=high`), Gemini 4 Argon performs multi-step mechanical root-cause diagnosis. When a shoulder pitch actuator experiences 238 percent torque strain under a 500-gram payload at full extension, Argon recognizes that adding raw motor mass will destabilize the entire arm. Instead, it reasons that the joint needs **mechanical advantage**, proposing a 10:1 planetary gearbox reduction and structural lightening with thin-walled 6061-T6 aerospace aluminum tubing.
+
+### 2. Zero-Hallucination Grounded Action Space
+Argon does not generate theoretical components. It is strictly constrained to a verified catalog of procurable off-the-shelf parts (Dynamixel servos, T-Motor brushless drives, APEX Dynamics planetary gearboxes). Argon cross-references official manufacturer datasheets, citing peak torque, continuous thermal limits, and gear efficiencies. Every recommended component is physically buyable and mathematically verified.
+
+### 3. Active In-the-Loop Simulation Feedback
+Argon does not operate as an isolated conversational chatbot. It functions as the core intelligence in an active closed loop with the MuJoCo 3.3.0 physics engine:
+- MuJoCo simulates the candidate robot under full gravity and 500 Hz dynamics.
+- The 17-point deterministic engineering referee flags any violation (e.g., path error exceeding 25 millimeters or torque exceeding continuous thermal thresholds).
+- Argon ingests the exact numerical failure trace, diagnoses the root cause, and synthesizes an improved hardware candidate in seconds.
+
+### 4. Multimodal Synthesis (Human Vision to Machine MJCF)
+Argon effortlessly synthesizes multimodal inputs: natural language task parameters (mass, reach, budget), on-device 3D skeletal landmarks from human video, and low-level physics simulation telemetry, unifying them into validated MJCF kinematic models.
+
+---
+
+## Alignment with Evaluation Criteria
+
+MotionFit was engineered from the ground up to excel across all hackathon evaluation criteria:
+
+| Evaluation Criterion | How MotionFit Excels |
+|:---|:---|
+| **1. Innovation & Real-World Impact** | Solves the genuine physical engineering bottleneck identified through direct interviews with mechanical engineers: eliminating the costly, trial-and-error cycle of actuator burnout and parasitic mass spirals. |
+| **2. Technical Depth & Engineering Rigor** | Full multi-body rigid dynamics in MuJoCo 3.3.0 on a 500 Hz forward integration grid. Replays actual simulated joint angles (`q_act`) reflecting real physics droop, audited by 17 deterministic checks. |
+| **3. Meaningful Use of Gemini 4 Argon** | Argon is not a superficial chatbot wrapper. It serves as an autonomous mechanical lead engineer using extended thinking to solve coupled, non-linear physical trade-offs in an active closed-loop simulation cycle. |
+| **4. Trust, Safety & Zero Hallucination** | Every hardware proposal is constrained to real, procurable manufacturer parts with verifiable datasheet citations. If no candidate passes, the system explicitly reports failure rather than faking approval. |
+| **5. User Experience & Product Completeness** | On-device zero-latency video extraction via WebAssembly MediaPipe Tasks Vision, interactive Three.js 3D digital twin with animated part replacement, and fully deployed on Google Cloud Run. |
 
 ---
 
 ## End-to-End System Architecture
 
 ```
-[ Human Video / Natural Language Task ]
-                  │
-                  ▼
-[ On-Device MediaPipe Vision (Browser WASM) ]
-  • 3D body landmark extraction
-  • Anatomical torso ratio depth resolution
-  • Retargeting into metric 4-DOF robot workspace
-                  │
-                  ▼
-[ Parametric MJCF Model Compilation ]
-  • Link geometry & composite inertia tensors
-  • Real catalog actuator torque / speed curves
-                  │
-                  ▼
-[ MuJoCo 3.3.0 Multi-Body Physics Simulation ]
-  • Inverse dynamics (ideal feedforward torque)
-  • Forward dynamics integration at 500 Hz
-  • True gravity droop, torque saturation & backlash
-                  │
-                  ▼
-[ Deterministic 17-Point Engineering Referee ]
-  • RMS path error <= 25 mm
-  • Joint peak torque <= 100% datasheet limit
-  • Continuous thermal torque <= 80% rating
-  • Budget & payload constraints
-           │                      │
-       [ Passes ]              [ Fails ]
-           │                      │
-           │                      ▼
-           │     [ Google Gemini 4 Argon Co-Pilot ]
-           │       • Extended thinking root-cause diagnosis
-           │       • Analyzes joint torque / thermal strain
-           │       • Avoids parasitic mass spirals
-           │       • Proposes gearbox reduction / lightweight alloy
-           │                      │
-           │                      ▼
-           └───◄── [ Next Hardware Iteration Loop ]
+[ Casual Smartphone Video / Natural Language Task ]
+                       │
+                       ▼
+    [ On-Device MediaPipe Tasks Vision (Client WASM) ]
+      • Zero-cloud private 3D landmark extraction
+      • Torso-ratio depth ambiguity resolution
+      • Analytic retargeting into metric 4-DOF workspace
+                       │
+                       ▼
+      [ Parametric MJCF Model Compiler ]
+      • Link geometries, centers of mass & inertia tensors
+      • Real catalog actuator torque / speed curves
+                       │
+                       ▼
+    [ MuJoCo 3.3.0 Multi-Body Physics Simulation ]
+      • Pass A: Inverse dynamics (ideal feedforward torques)
+      • Pass B: Forward dynamics integration at 500 Hz
+      • True gravitational droop, actuator saturation & inertia
+                       │
+                       ▼
+    [ Deterministic 17-Point Engineering Referee ]
+      • RMS path tracking error <= 25 mm
+      • Joint peak torque <= 100% datasheet rating
+      • Continuous thermal torque <= 80% rated limit
+      • Budget ceiling, mass targets & reachability
+              │                         │
+          [ Passes ]                 [ Fails ]
+              │                         │
+              │                         ▼
+              │        [ Google Gemini 4 Argon Co-Pilot ]
+              │          • Extended thinking root-cause diagnosis
+              │          • Parses joint torque & thermal strain curves
+              │          • Prevents parasitic mass accumulation
+              │          • Proposes gear reduction & alloy substitution
+              │                         │
+              │                         ▼
+              └──────◄───── [ Next Hardware Iteration Loop ]
 ```
 
 ---
 
-## Core Capabilities
+## Core Capabilities & Features
 
 ### 1. On-Device Multimodal Motion Capture & Kinematic Retargeting
-Users can upload a casual smartphone video of an arm performing a manipulation task (such as reaching down, grasping a water bottle, and lifting it across a span) or provide a natural language specification with explicit mass and budget requirements.
-- **Zero Cloud Latency & Total Privacy**: Video frames are processed entirely on-device via WebAssembly-powered MediaPipe Tasks Vision. Video bytes never leave the client.
-- **Depth Disambiguation**: Solves monocular depth ambiguity by calculating proportional torso-to-limb ratios over time.
+Users upload a smartphone video of a human demonstration (such as reaching down, grasping a 500 mL water bottle, and lifting it across a span) or enter a natural language task description with explicit weight and budget constraints.
+- **Zero Cloud Latency & Total Privacy**: Video frames are processed entirely on-device via WebAssembly-powered MediaPipe Tasks Vision. Raw video never touches external servers.
+- **Depth Disambiguation**: Resolves monocular depth ambiguity by calculating proportional torso-to-limb anatomical ratios across time.
 - **Kinematic Retargeting**: Normalizes and scales measured human wrist trajectories into a feasible workspace for a four-degree-of-freedom manipulator using analytic inverse kinematics.
 
 ### 2. High-Fidelity Physics Verification in MuJoCo 3.3.0
-Unlike conventional generative AI tools that hallucinate hardware specifications, MotionFit grounds every decision in Newtonian physics.
-- **Rigid-Body Dynamics**: Constructs a custom MJCF definition with exact link mass distributions, center-of-mass offsets, and inertia tensors.
-- **Dual-Pass Evaluation**:
-  - *Pass A (Inverse Dynamics)*: Computes the theoretical torque profiles required along the target trajectory.
-  - *Pass B (Forward Dynamics at 500 Hz)*: Simulates a closed-loop PD controller with actuator voltage limits, dynamic friction, gravitational loading, and motor droop.
-- **Real Playback**: The 3D viewer replays the actual simulated joint angles (`q_act`), showing genuine physical droop when an actuator is undersized, rather than an idealized trajectory.
+Unlike conventional tools that produce cosmetic animations, MotionFit simulates real Newtonian mechanics.
+- **Rigid-Body Dynamics**: Generates custom MJCF models with accurate link mass distributions, centers of mass, and composite inertia tensors.
+- **Dual-Pass Verification**:
+  - *Pass A (Inverse Dynamics)*: Computes theoretical joint torque requirements along the trajectory.
+  - *Pass B (Forward Dynamics at 500 Hz)*: Simulates closed-loop PD-controlled actuators with back-EMF velocity limits, dynamic joint friction, gravitational loading, and motor droop.
+- **True Simulated Playback**: The Three.js viewer replays the actual simulated joint angles (`q_act`), showing genuine physical droop when an actuator is undersized, rather than an idealized line.
 
 ### 3. Deterministic 17-Point Engineering Audit
-Every hardware candidate must pass seventeen strict, deterministic engineering criteria before receiving approval:
-1. **End-Effector RMS Tracking Accuracy**: Must remain within 25 millimeters of the demonstration trajectory.
+Every hardware candidate must satisfy seventeen strict, deterministic engineering criteria before certification:
+1. **End-Effector RMS Tracking Accuracy**: Must remain within 25 millimeters of the target trajectory.
 2. **Maximum Path Deviation**: Maximum instantaneous error must not exceed 50 millimeters.
 3. **Shoulder Pitch Peak Torque**: Must not exceed 100 percent of actuator peak rating.
 4. **Elbow Pitch Peak Torque**: Must not exceed 100 percent of actuator peak rating.
 5. **Continuous Thermal Load**: RMS torque over the trajectory must stay within continuous thermal safety limits (under 80 percent of rated continuous torque).
 6. **Actuator Speed Saturation**: Joint angular velocities must not exceed no-load maximum speed ratings.
-7. **Cantilever Bending Margin**: Structural link deflection under full dynamic reach must remain within allowable thresholds.
+7. **Cantilever Bending Margin**: Structural link deflection under dynamic reach must remain within allowable thresholds.
 8. **Payload Holding Margin**: Static holding torque at maximum extension must support the target payload plus a 20 percent safety margin.
 9. **Gravitational Sag Tolerance**: Terminal position error under static payload hold must be under 10 millimeters.
 10. **Actuator Temperature Headroom**: Estimated coil temperature rise under continuous duty cycle must remain within manufacturer limits.
@@ -113,19 +144,9 @@ Every hardware candidate must pass seventeen strict, deterministic engineering c
 16. **Datasheet Citation Integrity**: All component properties must map to verified manufacturer datasheets.
 17. **Zero Hallucinated Components**: Component selections are strictly constrained to real, procurable off-the-shelf parts.
 
-### 4. Deep Engineering Reasoning with Gemini 4 Argon
-Hardware optimization is non-linear and coupled. Upgrading to a heavier motor increases torque, but the added parasitic mass overloads all upstream joints, causing a cascading design failure.
-- **Extended Thinking**: With `thinking_level=high`, Gemini 4 Argon conducts root-cause analysis across time-series torque telemetry.
-- **Mechanical Advantage over Raw Mass**: When a shoulder pitch joint experiences 238 percent torque overload, Argon recognizes that adding raw motor mass is counterproductive. Instead, it introduces a 10:1 planetary reduction gearbox and recommends switching the link structure to thin-walled 6061-T6 aerospace aluminum tubing.
-- **Strictly Grounded Catalog**: Argon selects exclusively from verified manufacturer parts:
-  - **Dynamixel Actuators**: XL430-W250, XM430-W350, XH540-W270
-  - **T-Motor Brushless Actuators**: AK80-9, AK70-10
-  - **APEX Dynamics Planetary Gearboxes**: High-precision low-backlash reducers
-  - **Structural Materials**: 6061-T6 Aluminum, Carbon Fiber Tubing
-
-### 5. Interactive 3D Digital Twin & Transformation Studio
-- **Live 3D Hardware Replacement**: As Gemini 4 Argon refines the hardware, the Three.js viewport animates the mechanical transformation. Golden APEX planetary gearbox collars snap onto the stressed joint, and bulky prototype links are swapped for slim aerospace aluminum tubes.
-- **Dynamic Manipulated Objects**: Renders the exact payload (coffee mug, water bottle, industrial tool, parcel) at the end-effector.
+### 4. Interactive 3D Digital Twin & Transformation Studio
+- **Live 3D Hardware Transformation**: As Gemini 4 Argon refines the hardware, the Three.js viewport animates the mechanical transformation. Golden APEX planetary gearbox collars snap onto the stressed joint, and bulky prototype links are swapped for slim aerospace aluminum tubes.
+- **Dynamic Manipulated Objects**: Dynamically renders the target payload (coffee mug, water bottle, industrial tool, parcel) at the end-effector.
 - **Interactive Assistant Mascot**: An animated SVG mesh gradient mascot tracks user interaction and signals simulation status.
 
 ---
