@@ -178,9 +178,6 @@ def validate_proposal(
         cits, _ = _collect_part_citations_and_numbers(p)
         for doc_l, pg in cits:
             all_catalog_citations.add((doc_l, pg))
-            # Also allow page 1 or 2 of the same datasheet PDF
-            all_catalog_citations.add((doc_l, 1))
-            all_catalog_citations.add((doc_l, 2))
 
     for idx, chg in enumerate(changes):
         if not isinstance(chg, dict):
@@ -267,10 +264,14 @@ def validate_proposal(
                         errors.append(
                             f"Change #{idx + 1} cites ({cit.get('doc')}, page {c_page_int}), which does not exist in catalog.json."
                         )
-                    elif part_docs and c_doc not in part_docs:
-                        errors.append(
-                            f"Change #{idx + 1} cites '{cit.get('doc')}' for part '{part_id}', but part belongs to {sorted(part_docs)}."
-                        )
+                    elif part is not None:
+                        field_name = str(cit.get("field") or "")
+                        field_src = (part.get(field_name) or {}).get("src", {}) if isinstance(part.get(field_name), dict) else {}
+                        exact = (str(field_src.get("doc", "")).lower(), field_src.get("page"))
+                        if exact != (c_doc, c_page_int):
+                            errors.append(
+                                f"Change #{idx + 1} citation must match part '{part_id}' field '{field_name}' exactly; expected {exact}."
+                            )
 
     if errors:
         return {
@@ -292,6 +293,12 @@ def validate_proposal(
             "mutated_design": None,
             "computed_summary": None,
         }
+
+    voltages = {float(cat_map[cfg["actuator_id"]]["rated_voltage_v"])
+                for cfg in mutated_design["joints"].values()
+                if cat_map[cfg["actuator_id"]].get("rated_voltage_v") is not None}
+    if len(voltages) > 1 and not mutated_design.get("allow_mixed_voltage_buses", False):
+        errors.append("Selected actuators require different voltage buses; explicitly model separate power buses before combining them.")
 
     max_mass = float(constraints.get("max_total_mass_kg", 4.0))
     max_cost = float(constraints.get("max_cost_usd", 2500.0))

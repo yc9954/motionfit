@@ -10,3 +10,5 @@ static/
 .env
 *.log
 tmp_projects/
+frontend/test-results/
+.playwright/

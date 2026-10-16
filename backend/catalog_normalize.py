@@ -134,8 +134,10 @@ def load_prices_csv(prices_path: Path) -> Dict[str, Dict[str, Any]]:
                 continue
             try:
                 p_val = float(row.get("price_usd", 0.0))
-            except (TypeError, ValueError):
-                p_val = 0.0
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid price for '{pid}' in {prices_path.name} row {idx}") from exc
+            if not math.isfinite(p_val) or p_val < 0:
+                raise ValueError(f"Price for '{pid}' must be finite and non-negative (row {idx})")
             prices[pid] = {
                 "value": p_val,
                 "src": {"doc": prices_path.name, "row": idx},
@@ -148,7 +150,9 @@ def normalize_catalog_part(
     prices_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Normalize a single extracted catalog part (actuator or gearbox), apply sanity bounds, and join price."""
-    norm = dict(part)
+    import copy
+
+    norm = copy.deepcopy(part)
     ptype = norm.get("type", "actuator")
     warnings: List[str] = list(norm.get("warnings", []))
     confidence = norm.get("confidence", "high")
@@ -160,6 +164,7 @@ def normalize_catalog_part(
         if st_val is not None:
             st_si = convert_torque_to_nm(float(st_val), st_obj.get("unit"), st_obj.get("raw"))
             st_obj["value"] = st_si
+            st_obj["unit"] = "N·m"
             norm["stall_torque_nm"] = st_obj
             if not (0.05 <= st_si <= 500.0):
                 confidence = "low"
@@ -172,20 +177,27 @@ def normalize_catalog_part(
         # 2. Continuous torque (derive 0.33 * stall if missing or null)
         ct_obj = norm.get("continuous_torque_nm") or {}
         ct_val = ct_obj.get("value")
-        if ct_val is None or ct_obj.get("derived", False):
+        if ct_val is None:
             derived_val = round(0.33 * st_si, 4)
             norm["continuous_torque_nm"] = {
                 "value": derived_val,
                 "src": dict(st_obj.get("src") or {"doc": "unknown.pdf", "page": 1}),
                 "derived": True,
+                "unit": "N·m",
                 "raw": ct_obj.get("raw") or f"Derived: 0.33 * {st_si} N·m",
             }
             ct_si = derived_val
+            confidence = "low"
+            warnings.append("Continuous torque is an engineering estimate (0.33 × stall), not a measured thermal rating.")
         else:
             ct_si = convert_torque_to_nm(float(ct_val), ct_obj.get("unit"), ct_obj.get("raw"))
             ct_obj["value"] = ct_si
+            ct_obj["unit"] = "N·m"
             ct_obj["derived"] = bool(ct_obj.get("derived", False))
             norm["continuous_torque_nm"] = ct_obj
+            if ct_obj["derived"]:
+                confidence = "low"
+                warnings.append("Continuous torque is derived; thermal capability requires independent review.")
 
         if st_si > 0 and ct_si > st_si:
             confidence = "low"
@@ -199,6 +211,7 @@ def normalize_catalog_part(
         if nl_val is not None:
             nl_si = convert_speed_to_rad_s(float(nl_val), nl_obj.get("unit"), nl_obj.get("raw"))
             nl_obj["value"] = nl_si
+            nl_obj["unit"] = "rad/s"
             norm["no_load_speed_rad_s"] = nl_obj
             if not (0.5 <= nl_si <= 100.0):
                 confidence = "low"
@@ -213,6 +226,7 @@ def normalize_catalog_part(
         if m_val is not None:
             m_si = convert_mass_to_kg(float(m_val), m_obj.get("unit"), m_obj.get("raw"))
             m_obj["value"] = m_si
+            m_obj["unit"] = "kg"
             norm["mass_kg"] = m_obj
             if not (0.01 <= m_si <= 20.0):
                 confidence = "low"
@@ -258,6 +272,7 @@ def normalize_catalog_part(
         if rot_val is not None:
             rot_si = convert_torque_to_nm(float(rot_val), rot_obj.get("unit"), rot_obj.get("raw"))
             rot_obj["value"] = rot_si
+            rot_obj["unit"] = "N·m"
             norm["rated_output_torque_nm"] = rot_obj
 
         # 4. Mass
@@ -266,6 +281,7 @@ def normalize_catalog_part(
         if m_val is not None:
             m_si = convert_mass_to_kg(float(m_val), m_obj.get("unit"), m_obj.get("raw"))
             m_obj["value"] = m_si
+            m_obj["unit"] = "kg"
             norm["mass_kg"] = m_obj
             if not (0.01 <= m_si <= 20.0):
                 confidence = "low"
@@ -282,7 +298,7 @@ def normalize_catalog_part(
 
     norm["confidence"] = confidence
     if warnings:
-        norm["warnings"] = warnings
+        norm["warnings"] = list(dict.fromkeys(warnings))
     norm.setdefault("user_confirmed", False)
     return norm
 
@@ -296,5 +312,13 @@ def normalize_catalog(
     parts = catalog_data.get("parts", [])
     normalized_parts = [normalize_catalog_part(p, prices_map=prices_map) for p in parts]
     result = dict(catalog_data)
+    if str(result.get("catalog_id", "")).startswith("demo-"):
+        result["provenance"] = {
+            "source": "project_generated_reference", "manufacturer_verified": False,
+            "requires_spec_review": True,
+            "note": "Bundled PDFs were generated by this project; they are not manufacturer originals.",
+        }
+        for part in normalized_parts:
+            part.setdefault("provenance", dict(result["provenance"]))
     result["parts"] = normalized_parts
     return result

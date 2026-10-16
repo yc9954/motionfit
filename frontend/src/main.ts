@@ -452,11 +452,36 @@ function renderLandingPageHtml(): string {
   const mf = finalIter?.metrics;
 
   return `
-    <!-- Obolus Fractal-Noise Ribbon Hero Banner -->
+    <!-- Obolus Fractal-Noise Ribbon Hero Banner with Interactive Mesh Gradient Ghost Mascot -->
     <section class="grad ink chat-hero" data-seed="motionfit-hero-origin">
       <div class="chat-hero-in">
-        <div class="hero-logo" aria-hidden="true">
-          <span><i></i><i></i><i></i></span>
+        <div class="hero-logo-ghost" aria-hidden="true" id="hero-ghost-container">
+          <svg xmlns="http://www.w3.org/2000/svg" width="90" height="112" viewBox="0 0 231 289" class="ghost-svg">
+            <defs>
+              <clipPath id="ghostShapeClip">
+                <path d="M230.809 115.385V249.411C230.809 269.923 214.985 287.282 194.495 288.411C184.544 288.949 175.364 285.718 168.26 280C159.746 273.154 147.769 273.461 139.178 280.23C132.638 285.384 124.381 288.462 115.379 288.462C106.377 288.462 98.1451 285.384 91.6055 280.23C82.912 273.385 70.9353 273.385 62.2415 280.23C55.7532 285.334 47.598 288.411 38.7246 288.462C17.4132 288.615 0 270.667 0 249.359V115.385C0 51.6667 51.6756 0 115.404 0C179.134 0 230.809 51.6667 230.809 115.385Z" />
+              </clipPath>
+              <linearGradient id="ghostGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#4A90E2" />
+                <stop offset="35%" stop-color="#5B86E5" />
+                <stop offset="65%" stop-color="#87CEEB" />
+                <stop offset="85%" stop-color="#D499B9" />
+                <stop offset="100%" stop-color="#4B6CB7" />
+              </linearGradient>
+              <radialGradient id="ghostShade" cx="80%" cy="80%" r="50%">
+                <stop offset="0%" stop-color="#2C3E50" stop-opacity="0.38" />
+                <stop offset="60%" stop-color="#FFB3D9" stop-opacity="0.22" />
+                <stop offset="100%" stop-color="#5B86E5" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <g clip-path="url(#ghostShapeClip)">
+              <rect width="231" height="289" fill="url(#ghostGradient)" />
+              <rect width="231" height="289" fill="url(#ghostShade)" />
+            </g>
+            <!-- Animated responsive eyes -->
+            <ellipse id="ghost-eye-l" cx="80" cy="124" rx="20" ry="30" fill="#0b0f19" class="ghost-eye" />
+            <ellipse id="ghost-eye-r" cx="151" cy="124" rx="20" ry="30" fill="#0b0f19" class="ghost-eye" />
+          </svg>
         </div>
         <div class="mono hero-kicker">AI Co-Pilot for Physical Robot Simulation</div>
         <h1 class="display hero-title">What physical task do you want your robot arm to do?</h1>
@@ -2181,6 +2206,30 @@ function bindEvents(): void {
       switchActiveView(target);
     });
   });
+
+  // Interactive Ghost Mascot Eye Tracking
+  const ghostContainer = document.getElementById("hero-ghost-container");
+  const eyeL = document.getElementById("ghost-eye-l") as SVGEllipseElement | null;
+  const eyeR = document.getElementById("ghost-eye-r") as SVGEllipseElement | null;
+
+  if (ghostContainer && eyeL && eyeR) {
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = ghostContainer.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const deltaX = (e.clientX - centerX) * 0.04;
+      const deltaY = (e.clientY - centerY) * 0.04;
+      const maxOff = 7;
+      const offX = Math.max(-maxOff, Math.min(maxOff, deltaX));
+      const offY = Math.max(-maxOff, Math.min(maxOff, deltaY));
+
+      eyeL.setAttribute("cx", String(80 + offX));
+      eyeL.setAttribute("cy", String(124 + offY));
+      eyeR.setAttribute("cx", String(151 + offX));
+      eyeR.setAttribute("cy", String(124 + offY));
+    };
+    window.addEventListener("mousemove", onMouseMove);
+  }
 
   // Landing Page Hero Composer & CTAs
   const heroForm = document.getElementById("hero-chat-form") as HTMLFormElement | null;

@@ -145,30 +145,24 @@ def inverse_kinematics(
         -r_mag - L3 * math.cos(phi), z_w, L1, L2, q1_flipped, phi
     )
 
-    valid_pos = [b for b in branches_pos if reach_pos and _in_limits(b)]
-    valid_neg = [b for b in branches_neg if reach_neg and _in_limits(b)]
-
-    if prev_q is not None:
-        prev_arr = np.asarray(prev_q, dtype=float)
-        all_valid = valid_pos + valid_neg
-        if all_valid:
-            chosen = min(all_valid, key=lambda b: float(np.linalg.norm(b - prev_arr)))
-            reachable = True
-        else:
-            pool = branches_pos if reach_pos else (branches_pos + branches_neg)
-            chosen = min(pool, key=lambda b: float(np.linalg.norm(b - prev_arr)))
-            reachable = reach_pos or reach_neg
+    # Angles differing by a full turn represent the same orientation. Normalize
+    # before checking the bounded mechanical joints; never unwrap past a stop.
+    for b in branches_pos + branches_neg:
+        b[:] = (b + math.pi) % (2.0 * math.pi) - math.pi
+    candidates = [(b, reach_pos) for b in branches_pos] + [(b, reach_neg) for b in branches_neg]
+    valid = [(b, reach) for b, reach in candidates if reach and _in_limits(b)]
+    reference = np.asarray(prev_q, dtype=float) if prev_q is not None else branches_pos[0]
+    if valid:
+        chosen, reachable = min(valid, key=lambda item: float(np.linalg.norm(item[0] - reference)))
     else:
-        # Frame 0: prefer forward elbow-up (branches_pos[0]) if valid
-        if valid_pos:
-            chosen = valid_pos[0]
-            reachable = True
-        elif valid_neg:
-            chosen = valid_neg[0]
-            reachable = True
-        else:
-            chosen = branches_pos[0]
-            reachable = reach_pos
+        # Prefer the closest achievable FK position when a target cannot be
+        # reached, while retaining failure flags for the checker.
+        def failure_score(item: tuple[np.ndarray, bool]) -> float:
+            q, _ = item
+            clipped = np.array([np.clip(a, *JOINT_LIMITS[name]) for a, name in zip(q, JOINT_LIMITS)])
+            error = np.linalg.norm(forward_kinematics(clipped, links)["ee"] - np.asarray(target_pos))
+            return float(error * 100.0 + 0.01 * np.linalg.norm(q - reference))
+        chosen, reachable = min(candidates, key=failure_score)
 
     limit_violation = not _in_limits(chosen)
     if limit_violation:
@@ -186,54 +180,38 @@ def solve_trajectory_ik(
     p_ee: np.ndarray, phi: np.ndarray, links: dict[str, Any]
 ) -> dict[str, Any]:
     """Solve analytic IK across an entire trajectory at N frames."""
-    n_frames = len(p_ee)
+    positions = np.asarray(p_ee, dtype=float)
+    pitches = np.asarray(phi, dtype=float)
+    n_frames = len(positions)
+    if positions.shape != (n_frames, 3) or pitches.shape != (n_frames,) or n_frames == 0:
+        raise ValueError("IK requires non-empty p_ee[N,3] and phi[N] arrays.")
+    if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(pitches)):
+        raise ValueError("IK targets must be finite.")
     q_traj = np.zeros((n_frames, 4), dtype=float)
     ik_failures = 0
     clamped_frames = 0
-    limit_violations_per_joint = {"J1": 0, "J2": 0, "J3": 0, "J4": 0}
-
+    limit_violations_per_joint = {name: 0 for name in JOINT_LIMITS}
     prev_q: np.ndarray | None = None
     for i in range(n_frames):
-        px, py, pz = float(p_ee[i, 0]), float(p_ee[i, 1]), float(p_ee[i, 2])
-        r = math.hypot(px, py)
-        z = pz - float(links["base_height_m"])
-        r_w = r - float(links["wrist_to_tool_m"]) * math.cos(float(phi[i]))
-        z_w = z - float(links["wrist_to_tool_m"]) * math.sin(float(phi[i]))
-        q1 = math.atan2(py, px) if r >= 1e-6 else (float(prev_q[0]) if prev_q is not None else 0.0)
-
-        branches, reachable = _solve_2link_branches(
-            r_w, z_w, float(links["upper_arm_m"]), float(links["forearm_m"]), q1, float(phi[i])
-        )
+        # Use the same forward/over-shoulder branches as single-pose IK.
+        q, reachable, has_violation = inverse_kinematics(positions[i], float(pitches[i]), links, prev_q)
         if not reachable:
             ik_failures += 1
-
-        valid_branches = [b for b in branches if _in_limits(b)]
-        if prev_q is not None:
-            pool = valid_branches if valid_branches else branches
-            raw_choice = min(pool, key=lambda b: float(np.linalg.norm(b[1:4] - prev_q[1:4])))
-        else:
-            raw_choice = valid_branches[0] if valid_branches else branches[0]
-
-        has_viol = False
-        for idx, name in enumerate(("J1", "J2", "J3", "J4")):
-            lo, hi = JOINT_LIMITS[name]
-            if raw_choice[idx] < lo - 1e-3 or raw_choice[idx] > hi + 1e-3:
-                limit_violations_per_joint[name] += 1
-                has_viol = True
-            raw_choice[idx] = float(np.clip(raw_choice[idx], lo, hi))
-        if not reachable or has_viol:
+        if has_violation:
+            for j, name in enumerate(JOINT_LIMITS):
+                if np.isclose(q[j], JOINT_LIMITS[name][0]) or np.isclose(q[j], JOINT_LIMITS[name][1]):
+                    limit_violations_per_joint[name] += 1
+        if not reachable or has_violation:
             clamped_frames += 1
+        q_traj[i] = q
+        prev_q = q
 
-        q_traj[i] = raw_choice
-        prev_q = raw_choice
-
-    unclamped_fraction = float(n_frames - clamped_frames) / max(n_frames, 1)
     return {
         "q": q_traj,
         "q_des": q_traj,
         "ik_failures": ik_failures,
         "limit_violations": limit_violations_per_joint,
-        "unclamped_fraction": round(unclamped_fraction, 4),
+        "unclamped_fraction": round(float(n_frames - clamped_frames) / n_frames, 4),
         "all_reachable": ik_failures == 0,
         "no_limit_violation": sum(limit_violations_per_joint.values()) == 0,
     }

@@ -132,6 +132,31 @@ REPORT_PROSE_SCHEMA: Dict[str, Any] = {
 }
 
 
+# Source-bearing quantities keep units and citations attached to the exact field.
+CATALOG_QUANTITY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "value": {"type": ["number", "null"]}, "unit": {"type": "string"}, "raw": {"type": "string"},
+        "src": {"type": "object", "properties": {"doc": {"type": "string"}, "page": {"type": "integer", "minimum": 1}}, "required": ["doc", "page"]},
+    },
+    "required": ["value", "src"],
+}
+CATALOG_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {"parts": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "part_id": {"type": "string"}, "type": {"type": "string", "enum": ["actuator", "gearbox"]},
+            "vendor": {"type": "string"}, "series": {"type": "string"}, "rated_voltage_v": {"type": "number"},
+            "dimensions_mm": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+            **{name: CATALOG_QUANTITY_SCHEMA for name in ("stall_torque_nm", "continuous_torque_nm", "no_load_speed_rad_s", "mass_kg", "ratio", "efficiency", "rated_output_torque_nm")},
+        },
+        "required": ["part_id", "type", "mass_kg"],
+    }}},
+    "required": ["parts"],
+}
+
+
 DESIGN_LOOP_SYSTEM_INSTRUCTION = """You are Gemini 4 Argon acting as Lead Robotics Hardware Architect for MotionFit.
 Your job is to diagnose coupled 4-DOF serial robot arm failures from MuJoCo inverse/forward dynamics and select real replacement actuators, inline planetary gearboxes, or link modifications strictly from the provided catalog.json and materials.json.
 
@@ -161,31 +186,23 @@ def _get_genai_client() -> Optional[Any]:
 
 
 def _extract_thought_and_text(interaction: Any) -> Tuple[str, str]:
-    """Extract thought summary and output_text from an Interaction response."""
+    """Read the installed SDK's model_output and public thought-summary steps."""
+    def get(obj: Any, key: str, default: Any = None) -> Any:
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
     thought_parts: List[str] = []
-    steps = getattr(interaction, "steps", None) or []
-    for step in steps:
-        stype = getattr(step, "type", None) or (step.get("type") if isinstance(step, dict) else None)
-        if stype == "thought":
-            summary = getattr(step, "summary", None) or (step.get("summary") if isinstance(step, dict) else None)
-            if summary:
-                thought_parts.append(str(summary))
-    output_text = getattr(interaction, "output_text", None) or ""
-    if not output_text and steps:
-        for step in reversed(steps):
-            stype = getattr(step, "type", None) or (step.get("type") if isinstance(step, dict) else None)
-            if stype == "model_output":
-                content = getattr(step, "content", None) or (step.get("content") if isinstance(step, dict) else [])
-                for c in content or []:
-                    ctype = getattr(c, "type", None) or (c.get("type") if isinstance(c, dict) else None)
-                    if ctype == "text":
-                        txt = getattr(c, "text", None) or (c.get("text") if isinstance(c, dict) else "")
-                        if txt:
-                            output_text = str(txt)
-                            break
-                if output_text:
-                    break
-    return "\n".join(thought_parts).strip(), output_text.strip()
+    output_parts: List[str] = []
+    for step in get(interaction, "steps", []) or []:
+        if get(step, "type") == "thought":
+            summary = get(step, "summary", []) or []
+            if isinstance(summary, str):
+                thought_parts.append(summary)
+            else:
+                thought_parts.extend(str(get(c, "text")) for c in summary if get(c, "type") == "text" and get(c, "text"))
+        elif get(step, "type") == "model_output":
+            output_parts.extend(str(get(c, "text")) for c in get(step, "content", []) or [] if get(c, "type") == "text" and get(c, "text"))
+    output_text = get(interaction, "output_text") or "\n".join(output_parts)
+    return "\n".join(thought_parts).strip(), str(output_text).strip()
 
 
 def _parse_json_safely(raw_text: str) -> Optional[Dict[str, Any]]:
@@ -214,7 +231,7 @@ def _parse_json_safely(raw_text: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Physics-Guided Deterministic Fallback Solver (Protects Demo & Offline Tests)
+# Physics-Guided Catalog Search (Measured-Load Screening)
 # ---------------------------------------------------------------------------
 
 def _physics_guided_proposal(
@@ -225,259 +242,122 @@ def _physics_guided_proposal(
     intent: Optional[Dict[str, Any]] = None,
     optimize_mode: bool = False,
 ) -> Dict[str, Any]:
-    """Physics-exact hardware diagnosis & part selector using real catalog citations."""
+    """Rank catalog combinations using measured loads; MuJoCo adjudicates each proposal.
+
+    The estimates intentionally use peak speed and peak torque together. They are
+    conservative screening estimates, not a substitute for re-simulation or a
+    claim that a gearbox physically mates to an actuator.
+    """
+    import copy
+    import math
+
+    from backend.model_builder import available_torque
+
     cat_map = index_catalog(catalog)
     materials = load_materials()
     constraints = design.get("constraints", {})
     thresholds = design.get("thresholds", {})
-    max_mass = float(constraints.get("max_total_mass_kg", 4.0))
-    max_cost = float(constraints.get("max_cost_usd", 2500.0))
-    peak_limit = float(thresholds.get("peak_torque_ratio", 0.80))
-    rms_limit = float(thresholds.get("rms_torque_ratio", 1.00))
-    speed_limit = float(thresholds.get("peak_speed_ratio", 0.90))
-
-    joints_m = metrics.get("joints", {})
-    violations = check_result.get("violations", [])
-
-    # Post-pass optimization mode (Stretch Goal 2): minimize cost/mass while keeping all checks green
-    if optimize_mode and check_result.get("passed", False):
-        j2_cfg = design["joints"]["J2"]
-        j2_m = joints_m.get("J2", {})
-        cur_act = j2_cfg.get("actuator_id")
-        cur_gb = j2_cfg.get("gearbox_id")
-
-        if cur_act in ("XM540-W270", "XM540-W150", "XH540-W270") and cur_gb is None:
-            if "XM430-W350" in cat_map and "APEX-PG20-2" in cat_map:
-                xm430 = cat_map["XM430-W350"]
-                pg20 = cat_map["APEX-PG20-2"]
-                cand_design = json.loads(json.dumps(design))
-                cand_design["joints"]["J2"] = {"actuator_id": "XM430-W350", "gearbox_id": "APEX-PG20-2"}
-                summary = compute_mass_and_cost(cand_design, cat_map, materials)
-                j2_spec = summary["joint_specs"]["J2"]
-                peak_req = float(j2_m.get("peak_req_nm", 4.25))
-                rms_req = float(j2_m.get("rms_req_nm", 2.34))
-                spd_at_peak_torque = 0.35 * float(j2_m.get("peak_speed_rad_s", 0.84))
-                tau_avail_est = j2_spec["tau_stall_eff"] * (1.0 - spd_at_peak_torque / j2_spec["omega_nl_eff"])
-                pred_peak_ratio = round(peak_req / max(tau_avail_est, 1e-6), 3)
-                pred_rms_ratio = round(rms_req / max(j2_spec["tau_cont_eff"], 1e-6), 3)
-
-                if pred_peak_ratio <= peak_limit and pred_rms_ratio <= rms_limit:
-                    return {
-                        "diagnosis": (
-                            f"All 17 verification checks pass with {cur_act} on J2 (peak_ratio={j2_m.get('peak_ratio', 0.47):.2f}, "
-                            f"rms_ratio={j2_m.get('rms_ratio', 0.67):.2f}). However, {cur_act} adds {cat_map[cur_act]['mass_kg']['value']} kg "
-                            f"and ${cat_map[cur_act]['price_usd']['value']:.0f}. Pairing the lighter XM430-W350 (0.082 kg, $310) with the "
-                            f"APEX-PG20-2 2:1 planetary stage (0.065 kg, $115, 92% efficiency) delivers 7.544 N·m effective stall torque "
-                            f"and 2.484 N·m continuous torque, saving 18 g and $60 while keeping J2 within thermal and peak margins."
-                        ),
-                        "changes": [
-                            {
-                                "target": "J2.actuator_id",
-                                "from": cur_act,
-                                "to": "XM430-W350",
-                                "rationale": (
-                                    "Revert J2 motor to XM430-W350 (stall torque 4.1 N·m, continuous torque 1.35 N·m, mass 0.082 kg) "
-                                    "to reduce shoulder housing mass and cost when paired with a 2:1 inline reducer."
-                                ),
-                                "citations": [
-                                    {
-                                        "doc": xm430["stall_torque_nm"]["src"]["doc"],
-                                        "page": int(xm430["stall_torque_nm"]["src"]["page"]),
-                                        "field": "stall_torque_nm",
-                                        "quote": "Stall Torque (12.0 V): 4.1 N·m; Continuous Torque: 1.35 N·m; Mass: 82 g",
-                                    }
-                                ],
-                            },
-                            {
-                                "target": "J2.gearbox_id",
-                                "from": None,
-                                "to": "APEX-PG20-2",
-                                "rationale": (
-                                    "Add APEX-PG20-2 inline planetary gearbox (ratio 2.0:1, efficiency 0.92, rated output torque 18.0 N·m, mass 0.065 kg) "
-                                    "on J2, multiplying motor torque by 2.0 * 0.92 = 1.84x."
-                                ),
-                                "citations": [
-                                    {
-                                        "doc": pg20["ratio"]["src"]["doc"],
-                                        "page": int(pg20["ratio"]["src"]["page"]),
-                                        "field": "ratio",
-                                        "quote": "Reduction Ratio: 2.0:1; Efficiency: 92%; Rated Output Torque: 18.0 N·m; Mass: 65 g",
-                                    }
-                                ],
-                            },
-                        ],
-                        "predicted_effect": {
-                            "j2_peak_ratio": pred_peak_ratio,
-                            "j2_rms_ratio": pred_rms_ratio,
-                            "total_mass_kg": round(summary["total_mass_kg"], 3),
-                            "total_cost_usd": round(summary["total_cost_usd"], 2),
-                        },
-                    }
-
-    # Standard failure diagnosis & fix
-    failing_joints: List[str] = []
-    for j_name in ("J2", "J3", "J1", "J4"):
-        jm = joints_m.get(j_name, {})
-        if (
-            float(jm.get("peak_ratio", 0.0)) > peak_limit
-            or float(jm.get("rms_ratio", 0.0)) > rms_limit
-            or float(jm.get("speed_ratio", 0.0)) > speed_limit
-        ):
-            failing_joints.append(j_name)
-
-    if not failing_joints:
-        failing_joints = ["J2"]
-
+    peak_limit = float(thresholds.get("peak_torque_ratio", 0.8))
+    rms_limit = float(thresholds.get("rms_torque_ratio", 1.0))
+    speed_limit = float(thresholds.get("peak_speed_ratio", 0.9))
+    max_mass = float(constraints.get("max_total_mass_kg", float("inf")))
+    max_cost = float(constraints.get("max_cost_usd", float("inf")))
+    working = copy.deepcopy(design)
+    observed = metrics.get("joints", {})
+    failing = [j for j in ("J1", "J2", "J3", "J4") if (
+        float(observed.get(j, {}).get("peak_ratio", 0)) > peak_limit
+        or float(observed.get(j, {}).get("rms_ratio", 0)) > rms_limit
+        or float(observed.get(j, {}).get("speed_ratio", 0)) > speed_limit)]
+    # Highest normalized overload first, independently of a particular robot.
+    failing.sort(key=lambda j: max(float(observed[j].get("peak_ratio", 0)) / peak_limit,
+                                  float(observed[j].get("rms_ratio", 0)) / rms_limit,
+                                  float(observed[j].get("speed_ratio", 0)) / speed_limit), reverse=True)
+    joint_order = list(observed) if optimize_mode and check_result.get("passed") else failing
     changes: List[Dict[str, Any]] = []
-    diag_sentences: List[str] = []
-    working_design = json.loads(json.dumps(design))
+    messages: List[str] = []
+    estimates = {j: dict(observed[j]) for j in observed}
 
-    for j_name in failing_joints[:2]:
-        jm = joints_m.get(j_name, {})
-        cur_act_id = working_design["joints"][j_name]["actuator_id"]
-        cur_gb_id = working_design["joints"][j_name].get("gearbox_id")
-        peak_req = float(jm.get("peak_req_nm", 4.25))
-        rms_req = float(jm.get("rms_req_nm", 2.34))
-        peak_spd = float(jm.get("peak_speed_rad_s", 0.84))
-        t_peak = float(jm.get("t_peak_s", 3.27))
-        sat_s = float(jm.get("saturated_time_s", 4.28))
+    def citation(part: Dict[str, Any], field: str) -> Dict[str, Any]:
+        value = part.get(field) or {}
+        src = value.get("src") or {}
+        return {"doc": src.get("doc"), "page": src.get("page"), "field": field,
+                "quote": str(value.get("raw") or f"{field}: {value.get('value')}")}
 
-        phase_name = "fast_extended_lift"
-        if intent and "phases" in intent:
-            for ph in intent["phases"]:
-                if float(ph.get("t_start", 0)) <= t_peak <= float(ph.get("t_end", 999)):
-                    phase_name = ph.get("name", phase_name)
-                    break
-
-        diag_sentences.append(
-            f"Joint {j_name} ({cur_act_id}) fails during phase '{phase_name}' at t={t_peak:.2f} s: "
-            f"required peak torque is {peak_req:.2f} N·m vs {jm.get('tau_avail_at_peak_nm', 3.65):.2f} N·m available "
-            f"(peak_ratio={jm.get('peak_ratio', 1.13):.2f} > {peak_limit:.2f}), and RMS torque is {rms_req:.2f} N·m vs "
-            f"{jm.get('tau_cont_eff_nm', 1.35):.2f} N·m continuous limit (rms_ratio={jm.get('rms_ratio', 1.73):.2f} > {rms_limit:.2f}), "
-            f"saturating the actuator for {sat_s:.2f} s and causing {metrics.get('ee_rmse_mm', 295.1):.1f} mm end-effector tracking droop."
-        )
-
-        # Evaluate all catalog actuators to find the best replacement that satisfies torque, speed, mass, and cost
-        best_cand_id: Optional[str] = None
-        best_score = 1e9
-
-        for pid, part in cat_map.items():
-            if part.get("type") != "actuator" or pid == cur_act_id:
+    actuators = [p for p in cat_map.values() if p.get("type") == "actuator"]
+    gearboxes = [None] + [p for p in cat_map.values() if p.get("type") == "gearbox"]
+    for joint in joint_order:
+        if len(changes) >= 3:
+            break
+        jm = observed[joint]
+        if not all(key in jm for key in ("peak_req_nm", "rms_req_nm", "peak_speed_rad_s")):
+            continue
+        current = working["joints"][joint]
+        bus_voltage = cat_map.get(current["actuator_id"], {}).get("rated_voltage_v")
+        before = compute_mass_and_cost(working, cat_map, materials)
+        candidates = []
+        for actuator in actuators:
+            if (bus_voltage is not None and actuator.get("rated_voltage_v") is not None
+                    and abs(float(actuator["rated_voltage_v"]) - float(bus_voltage)) > 1e-6):
                 continue
-            st = float(part["stall_torque_nm"]["value"])
-            ct = float(part["continuous_torque_nm"]["value"])
-            w0 = float(part["no_load_speed_rad_s"]["value"])
-            m_act = float(part["mass_kg"]["value"])
-            p_act = float((part.get("price_usd") or {}).get("value") or 9999.0)
-
-            if peak_spd >= speed_limit * w0:
-                continue
-            tau_avail_at_spd = st * (1.0 - peak_spd / w0)
-            p_ratio = peak_req / max(tau_avail_at_spd, 1e-6)
-            r_ratio = rms_req / max(ct, 1e-6)
-
-            if p_ratio <= peak_limit * 0.92 and r_ratio <= rms_limit * 0.92:
-                # Test mass & cost budget
-                test_d = json.loads(json.dumps(working_design))
-                test_d["joints"][j_name]["actuator_id"] = pid
-                test_d["joints"][j_name]["gearbox_id"] = None
-                mc = compute_mass_and_cost(test_d, cat_map, materials)
-                if mc["total_mass_kg"] <= max_mass and mc["total_cost_usd"] <= max_cost:
-                    # Strongly prefer same 12.0V bus voltage and ROBOTIS DYNAMIXEL-X series compatibility
-                    cur_part = cat_map.get(cur_act_id, {})
-                    cur_v = float(cur_part.get("rated_voltage_v", 12.0))
-                    cand_v = float(part.get("rated_voltage_v", 12.0))
-                    voltage_penalty = 0.0 if abs(cand_v - cur_v) < 0.5 else 300.0
-                    score = (
-                        voltage_penalty
-                        + mc["total_mass_kg"] * 200.0
-                        + mc["total_cost_usd"] * 0.5
-                        + max(r_ratio, p_ratio) * 50.0
-                    )
-                    if pid == "XM540-W270":
-                        score -= 80.0  # Direct same-vendor 12V bus upgrade with generous thermal margin
-                    if score < best_score:
-                        best_score = score
-                        best_cand_id = pid
-
-        if best_cand_id is None:
-            best_cand_id = "XM540-W270" if "XM540-W270" in cat_map else next(
-                pid for pid, p in cat_map.items() if p.get("type") == "actuator"
-            )
-
-        chosen = cat_map[best_cand_id]
-        st_val = float(chosen["stall_torque_nm"]["value"])
-        ct_val = float(chosen["continuous_torque_nm"]["value"])
-        w0_val = float(chosen["no_load_speed_rad_s"]["value"])
-        m_val = float(chosen["mass_kg"]["value"])
-        st_src = chosen["stall_torque_nm"]["src"]
-        ct_src = chosen["continuous_torque_nm"]["src"]
-
-        working_design["joints"][j_name]["actuator_id"] = best_cand_id
-        working_design["joints"][j_name]["gearbox_id"] = None
-
-        changes.append(
-            {
-                "target": f"{j_name}.actuator_id",
-                "from": cur_act_id,
-                "to": best_cand_id,
-                "rationale": (
-                    f"Upgrade {j_name} from {cur_act_id} to {best_cand_id} (stall torque {st_val} N·m, "
-                    f"continuous torque {ct_val} N·m, no-load speed {w0_val} rad/s, mass {m_val} kg). "
-                    f"Because {j_name} sits at the shoulder base, its +{m_val - 0.082:.3f} kg mass increase does not add "
-                    f"gravity moment arm to distal links, while lowering {j_name} peak torque ratio to "
-                    f"{peak_req / (st_val * (1.0 - peak_spd / w0_val)):.2f} and RMS torque ratio to {rms_req / ct_val:.2f}."
-                ),
-                "citations": [
-                    {
-                        "doc": st_src["doc"],
-                        "page": int(st_src["page"]),
-                        "field": "stall_torque_nm",
-                        "quote": f"Stall Torque: {st_val} N·m; Continuous Torque: {ct_val} N·m; No-Load Speed: {w0_val} rad/s",
-                    },
-                    {
-                        "doc": ct_src["doc"],
-                        "page": int(ct_src["page"]),
-                        "field": "continuous_torque_nm",
-                        "quote": f"Continuous Torque: {ct_val} N·m; Mass: {m_val} kg",
-                    },
-                ],
-            }
-        )
-        if cur_gb_id is not None:
-            changes.append(
-                {
-                    "target": f"{j_name}.gearbox_id",
-                    "from": cur_gb_id,
-                    "to": None,
-                    "rationale": f"Remove external gearbox {cur_gb_id} on {j_name} since {best_cand_id} provides sufficient direct output torque.",
-                    "citations": [
-                        {
-                            "doc": st_src["doc"],
-                            "page": int(st_src["page"]),
-                            "field": "stall_torque_nm",
-                            "quote": f"Direct output stall torque {st_val} N·m",
-                        }
-                    ],
-                }
-            )
-
-    summary = compute_mass_and_cost(working_design, cat_map, materials)
-    j2_spec = summary["joint_specs"]["J2"]
-    j2_m = joints_m.get("J2", {})
-    j2_peak_req = float(j2_m.get("peak_req_nm", 4.25))
-    j2_rms_req = float(j2_m.get("rms_req_nm", 2.34))
-    j2_spd = float(j2_m.get("peak_speed_rad_s", 0.84))
-    j2_avail = j2_spec["tau_stall_eff"] * max(0.1, 1.0 - j2_spd / max(j2_spec["omega_nl_eff"], 1e-6))
-
+            for gearbox in gearboxes:
+                cfg = {"actuator_id": actuator["part_id"], "gearbox_id": gearbox["part_id"] if gearbox else None}
+                fields = [field for field in ("actuator_id", "gearbox_id") if cfg[field] != current.get(field)]
+                if not fields or len(changes) + len(fields) > 3:
+                    continue
+                try:
+                    spec = get_joint_actuator_specs(cfg, cat_map)
+                    if min(spec["tau_stall_eff"], spec["tau_cont_eff"], spec["omega_nl_eff"]) <= 0:
+                        continue
+                    avail = available_torque(float(jm["peak_speed_rad_s"]), spec["tau_stall_eff"], spec["tau_rated_eff"], spec["omega_nl_eff"])
+                    peak = float(jm["peak_req_nm"]) / max(avail, 1e-9)
+                    rms = float(jm["rms_req_nm"]) / spec["tau_cont_eff"]
+                    speed = float(jm["peak_speed_rad_s"]) / spec["omega_nl_eff"]
+                    if peak > peak_limit * 0.98 or rms > rms_limit * 0.98 or speed > speed_limit * 0.98:
+                        continue
+                    candidate = copy.deepcopy(working)
+                    candidate["joints"][joint] = cfg
+                    summary = compute_mass_and_cost(candidate, cat_map, materials)
+                    if summary["total_mass_kg"] > max_mass or summary["total_cost_usd"] > max_cost:
+                        continue
+                    score = summary["total_cost_usd"] + 200.0 * summary["total_mass_kg"]
+                    old_score = before["total_cost_usd"] + 200.0 * before["total_mass_kg"]
+                    if optimize_mode and score >= old_score - 1e-6:
+                        continue
+                    if not all(math.isfinite(x) for x in (score, peak, rms, speed)):
+                        continue
+                    candidates.append((score, cfg, fields, peak, rms, speed, summary))
+                except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                    continue
+        if not candidates:
+            messages.append(f"{joint}: no catalog combination satisfies the measured torque/speed demand and current budgets.")
+            continue
+        _, cfg, fields, peak, rms, speed, _ = min(candidates, key=lambda row: row[0])
+        for field in fields:
+            part = cat_map.get(cfg[field])
+            spec_field = "stall_torque_nm" if field == "actuator_id" else "ratio"
+            changes.append({
+                "target": f"{joint}.{field}", "from": current.get(field), "to": cfg[field],
+                "rationale": (f"Catalog screening for {joint} uses measured peak torque {jm['peak_req_nm']:.4f} N·m, "
+                              f"RMS torque {jm['rms_req_nm']:.4f} N·m and peak speed {jm['peak_speed_rad_s']:.4f} rad/s. "
+                              "This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified."),
+                "citations": [citation(part, spec_field)] if part else [],
+            })
+        working["joints"][joint] = cfg
+        estimates[joint].update(peak_ratio=peak, rms_ratio=rms, speed_ratio=speed)
+        messages.append(f"{joint}: screened {len(candidates)} budget-feasible combinations against the measured load; selected {cfg['actuator_id']}" + (f" with {cfg['gearbox_id']}." if cfg['gearbox_id'] else "."))
+        if optimize_mode:
+            break
+    summary = compute_mass_and_cost(working, cat_map, materials)
+    if not messages:
+        messages = ["No hardware change is justified by the measured joint loads. Remaining violations require task, reach, or constraint changes."]
     return {
-        "diagnosis": " ".join(diag_sentences),
-        "changes": changes[:3],
+        "diagnosis": " ".join(messages),
+        "changes": changes,
         "predicted_effect": {
-            "j2_peak_ratio": round(j2_peak_req / max(j2_avail, 1e-6), 3),
-            "j2_rms_ratio": round(j2_rms_req / max(j2_spec["tau_cont_eff"], 1e-6), 3),
-            "total_mass_kg": round(summary["total_mass_kg"], 3),
-            "total_cost_usd": round(summary["total_cost_usd"], 2),
+            "j2_peak_ratio": round(float(estimates.get("J2", {}).get("peak_ratio", 0)), 4),
+            "j2_rms_ratio": round(float(estimates.get("J2", {}).get("rms_ratio", 0)), 4),
+            "total_mass_kg": summary["total_mass_kg"],
+            "total_cost_usd": summary["total_cost_usd"],
         },
     }
 
@@ -547,11 +427,7 @@ def propose_design_changes(
                     "thinking_level": "high",
                     "thinking_summaries": "auto",
                 },
-                "response_format": {
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": PROPOSAL_SCHEMA,
-                },
+                "response_format": [{"type": "text", "mime_type": "application/json", "schema": PROPOSAL_SCHEMA}],
             }
             if previous_interaction_id:
                 kwargs["previous_interaction_id"] = previous_interaction_id
@@ -580,14 +456,12 @@ def propose_design_changes(
     )
     return {
         "proposal": fallback_proposal,
-        "interaction_id": previous_interaction_id or f"int_argon_{uuid.uuid4().hex[:10]}",
-        "thought_summary": (
-            "Evaluated coupled 4-DOF inverse dynamics across J1–J4: J2 gravitational + inertial moment peaks during "
-            "extended horizontal reach (q2 -> 0.36 rad). Evaluated catalog actuators on the 12V/24V bus against linear "
-            "torque-speed derating and thermal RMS limits."
-        ),
-        "model": ARGON_MODEL,
+        "interaction_id": previous_interaction_id,
+        "thought_summary": fallback_proposal["diagnosis"],
+        "model": "deterministic_catalog_search",
         "used_live_api": False,
+        "source": "measured_load_catalog_screening",
+        "fallback_reason": "Live model unavailable or returned an invalid response.",
     }
 
 
@@ -618,11 +492,7 @@ def repair_design_proposal(
                     "thinking_level": "high",
                     "thinking_summaries": "auto",
                 },
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": PROPOSAL_SCHEMA,
-                },
+                response_format=[{"type": "text", "mime_type": "application/json", "schema": PROPOSAL_SCHEMA}],
             )
             thought_summary, out_text = _extract_thought_and_text(interaction)
             parsed = _parse_json_safely(out_text)
@@ -647,10 +517,11 @@ def repair_design_proposal(
     )
     return {
         "proposal": fallback_proposal,
-        "interaction_id": previous_interaction_id or f"int_repair_{uuid.uuid4().hex[:10]}",
-        "thought_summary": "Repaired proposal by selecting verified catalog part IDs and exact datasheet page citations.",
-        "model": ARGON_MODEL,
+        "interaction_id": previous_interaction_id,
+        "thought_summary": fallback_proposal["diagnosis"],
+        "model": "deterministic_catalog_search",
         "used_live_api": False,
+        "source": "measured_load_catalog_screening",
     }
 
 
@@ -693,46 +564,27 @@ def analyze_motion_intent(
                 model=ARGON_MODEL,
                 input=inputs,
                 generation_config={"thinking_level": "medium"},
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": INTENT_SCHEMA,
-                },
+                response_format=[{"type": "text", "mime_type": "application/json", "schema": INTENT_SCHEMA}],
             )
             _, out_text = _extract_thought_and_text(interaction)
             parsed = _parse_json_safely(out_text)
             if parsed and "phases" in parsed:
+                parsed["source"] = "gemini_video" if video_bytes else "gemini_landmark_summary"
+                parsed["used_live_api"] = True
+                parsed["model"] = ARGON_MODEL
                 return parsed
         except Exception as exc:
             logger.warning("Gemini 4 Argon motion intent fell back to kinematic phase segmentation: %s", exc)
 
-    duration_s = float(landmarks_summary.get("duration_s", 6.0))
+    duration_s = float(landmarks_summary.get("duration_s", 0.0))
     return {
-        "task_summary": (
-            f"Single-arm table wipe followed by a fast extended horizontal reach and overhead lift ({duration_s:.1f} s)."
-        ),
-        "phases": [
-            {
-                "name": "surface_wipe",
-                "t_start": 0.0,
-                "t_end": round(duration_s * 0.35, 2),
-                "notes": "Lateral sweeping wipe across proximal workspace at compact reach.",
-            },
-            {
-                "name": "fast_extended_lift",
-                "t_start": round(duration_s * 0.35, 2),
-                "t_end": round(duration_s * 0.65, 2),
-                "notes": "Rapid forward extension and vertical lift to full moment arm; critical peak gravity + dynamic load on shoulder pitch J2.",
-            },
-            {
-                "name": "shelf_place_and_return",
-                "t_start": round(duration_s * 0.65, 2),
-                "t_end": round(duration_s, 2),
-                "notes": "Controlled placement at elevated target and return to compact posture.",
-            },
-        ],
-        "orientation_constraint": "keep_level",
-        "Inferred_payload_note": "Handheld weighted container (~0.40 kg) requiring level tool orientation during lift.",
+        "task_summary": f"Recorded single-arm trajectory ({duration_s:.3f} s). Semantic task phases require video analysis.",
+        "phases": [{"name": "recorded_motion", "t_start": 0.0, "t_end": duration_s,
+                    "notes": "Measured kinematics only; no object, payload, or grasp inference."}],
+        "orientation_constraint": "free",
+        "Inferred_payload_note": "Payload must be supplied by the user; it cannot be inferred from pose coordinates.",
+        "source": "measured_kinematics_only",
+        "used_live_api": False,
     }
 
 
@@ -750,10 +602,17 @@ def extract_catalog_from_pdfs(
 
     client = _get_genai_client()
     extracted_parts: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    if not pdf_paths:
+        raise ValueError("No datasheet PDFs were supplied.")
+    if client is None:
+        raise ValueError("Datasheet extraction requires an available Gemini API client; no catalog was substituted.")
 
     if client is not None and pdf_paths:
         for pdf_path in pdf_paths:
             try:
+                from pypdf import PdfReader
+                page_count = len(PdfReader(str(pdf_path)).pages)
                 pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
                 interaction = client.interactions.create(
                     model=ARGON_MODEL,
@@ -767,29 +626,51 @@ def extract_catalog_from_pdfs(
                             "type": "text",
                             "text": (
                                 f"Extract all actuator or gearbox specifications from datasheet '{pdf_path.name}'. "
-                                "Include exact page numbers for every numeric field. Prefer 12.0V specifications if multiple voltages are listed."
+                                "Include exact page numbers and the exact raw quotation for every numeric field. "
+                                "The value must agree with its explicit unit; use SI units for numeric values when unit is omitted. "
+                                "Use null for an unstated continuous thermal rating, never infer it from stall torque. "
+                                "Do not infer mounting compatibility from housing dimensions. Prefer 12.0V specifications if multiple voltages are listed."
                             ),
                         },
                     ],
                     generation_config={"thinking_level": "low"},
+                    response_format=[{"type": "text", "mime_type": "application/json", "schema": CATALOG_EXTRACTION_SCHEMA}],
                 )
                 _, out_text = _extract_thought_and_text(interaction)
                 parsed = _parse_json_safely(out_text)
-                if parsed:
-                    if "parts" in parsed and isinstance(parsed["parts"], list):
-                        extracted_parts.extend(parsed["parts"])
-                    elif "part_id" in parsed:
-                        extracted_parts.append(parsed)
+                parts = parsed.get("parts", []) if isinstance(parsed, dict) else []
+                if not isinstance(parts, list) or not parts:
+                    raise ValueError("No valid catalog parts were returned")
+                for part in parts:
+                    if not isinstance(part, dict) or not part.get("part_id") or part.get("type") not in ("actuator", "gearbox"):
+                        raise ValueError("Each extracted part requires a part_id and actuator/gearbox type")
+                    required = ("stall_torque_nm", "no_load_speed_rad_s", "mass_kg") if part["type"] == "actuator" else ("ratio", "efficiency", "rated_output_torque_nm", "mass_kg")
+                    for field in required:
+                        quantity = part.get(field)
+                        if not isinstance(quantity, dict) or quantity.get("value") is None:
+                            raise ValueError(f"{part['part_id']}: missing {field}")
+                    for field, quantity in part.items():
+                        if isinstance(quantity, dict) and "value" in quantity and field != "price_usd":
+                            src = quantity.get("src") or {}
+                            page = src.get("page")
+                            if src.get("doc") != pdf_path.name or not isinstance(page, int) or not (1 <= page <= page_count):
+                                raise ValueError(f"{part['part_id']}.{field}: source must match the supplied document and an existing page")
+                    part["provenance"] = {"source": "user_pdf_gemini_extraction", "requires_spec_review": True, "document": pdf_path.name}
+                extracted_parts.extend(parts)
             except Exception as exc:
-                logger.warning("PDF extraction fallback for %s: %s", pdf_path.name, exc)
+                errors.append(f"{pdf_path.name}: {exc}")
+                logger.warning("PDF extraction failed for %s: %s", pdf_path.name, exc)
 
-    if not extracted_parts:
-        default_cat_path = Path(__file__).resolve().parent / "data" / "demo" / "catalog.json"
-        if default_cat_path.exists():
-            raw_cat = json.loads(default_cat_path.read_text(encoding="utf-8"))
-            return normalize_catalog(raw_cat, prices_path=prices_path)
-
-    return normalize_catalog({"parts": extracted_parts}, prices_path=prices_path)
+    if errors or not extracted_parts:
+        raise ValueError("Datasheet extraction failed: " + "; ".join(errors or ["No catalog parts were extracted"]))
+    ids = [part["part_id"] for part in extracted_parts]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Datasheet extraction returned duplicate part IDs; resolve document/voltage variants before confirming.")
+    return normalize_catalog({
+        "parts": extracted_parts,
+        "provenance": {"source": "user_pdf_gemini_extraction", "used_live_api": True, "model": ARGON_MODEL,
+                       "documents": [path.name for path in pdf_paths], "requires_spec_review": True},
+    }, prices_path=prices_path)
 
 
 def generate_report_prose(
@@ -799,76 +680,8 @@ def generate_report_prose(
     intent: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     """Generate concise engineering report prose using Gemini 3.8 Flash (`gemini-3.8-flash`)."""
-    client = _get_genai_client()
-    if client is not None:
-        try:
-            summary_payload = {
-                "initial_design_id": initial_design.get("design_id"),
-                "final_design_id": final_design.get("design_id"),
-                "payload_kg": final_design.get("payload_kg"),
-                "task_summary": (intent or {}).get("task_summary"),
-                "iterations_count": len(iterations),
-                "iterations_summary": [
-                    {
-                        "iteration": it.get("iteration"),
-                        "design_id": it.get("design_id"),
-                        "passed": it.get("check", {}).get("passed"),
-                        "ee_rmse_mm": it.get("metrics", {}).get("ee_rmse_mm"),
-                        "total_mass_kg": it.get("metrics", {}).get("total_mass_kg"),
-                        "total_cost_usd": it.get("metrics", {}).get("total_cost_usd"),
-                        "proposal": it.get("proposal"),
-                    }
-                    for it in iterations
-                ],
-            }
-            interaction = client.interactions.create(
-                model=FLASH_MODEL,
-                input=(
-                    "Write concise, rigorous engineering prose for a MotionFit hardware verification report based "
-                    "strictly on the following simulation results. Do not invent any numbers beyond those provided:\n"
-                    + json.dumps(summary_payload, indent=2)
-                ),
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": REPORT_PROSE_SCHEMA,
-                },
-            )
-            _, out_text = _extract_thought_and_text(interaction)
-            parsed = _parse_json_safely(out_text)
-            if parsed and "executive_summary" in parsed:
-                return {
-                    "executive_summary": str(parsed.get("executive_summary", "")),
-                    "coupling_analysis": str(parsed.get("coupling_analysis", "")),
-                    "recommendation_notes": str(parsed.get("recommendation_notes", "")),
-                }
-        except Exception as exc:
-            logger.warning("Gemini 3.8 Flash report prose fell back to deterministic template: %s", exc)
-
-    it0 = iterations[0] if iterations else {}
-    it_last = iterations[-1] if iterations else {}
-    m0 = it0.get("metrics", {})
-    mf = it_last.get("metrics", {})
-    j2_0 = m0.get("joints", {}).get("J2", {})
-    j2_f = mf.get("joints", {}).get("J2", {})
-
     return {
-        "executive_summary": (
-            f"Initial design '{initial_design.get('design_id', 'demo-v0')}' failed verification in MuJoCo simulation "
-            f"with an end-effector tracking RMSE of {m0.get('ee_rmse_mm', 295.1):.1f} mm (threshold 15.0 mm) due to "
-            f"shoulder pitch (J2) torque saturation (peak ratio {j2_0.get('peak_ratio', 1.13):.2f}, continuous RMS ratio "
-            f"{j2_0.get('rms_ratio', 1.73):.2f}). Verified redesign '{final_design.get('design_id', 'demo-v1')}' "
-            f"resolves all 17 checks, reducing tracking error to {mf.get('ee_rmse_mm', 13.2):.1f} mm, J2 peak torque ratio "
-            f"to {j2_f.get('peak_ratio', 0.47):.2f}, and J2 RMS torque ratio to {j2_f.get('rms_ratio', 0.67):.2f} "
-            f"at a total arm mass of {mf.get('total_mass_kg', 0.871):.3f} kg and BOM cost of ${mf.get('total_cost_usd', 1276.15):.2f}."
-        ),
-        "coupling_analysis": (
-            "In a serial 4-DOF arm, actuator mass placed at distal joints (J3 elbow or J4 wrist) multiplies gravitational "
-            "and inertial moment on the shoulder pitch joint (J2). Upgrading J2 directly at the shoulder base resolves "
-            "the 4.25 N·m peak lift torque without increasing the suspended link moment arm."
-        ),
-        "recommendation_notes": (
-            "All selected components operate on the same 12.0 V DC bus and RS-485 DYNAMIXEL Protocol 2.0 chain. "
-            "Verify physical bracket hole patterns (34x54 mm on XM540 vs 28.5x46.5 mm on XM430) prior to fabrication."
-        ),
+        "executive_summary": "The report compares the submitted design with the selected simulation result. Numerical results are taken directly from the verification records.",
+        "coupling_analysis": "In a serial arm, distal actuator and payload masses contribute to upstream gravity and inertia. Each candidate must be re-simulated after a hardware change.",
+        "recommendation_notes": "The rigid arm simulation uses a fixed end-effector payload. Grasp contact, collision, mechanical mounting, power electronics, stiffness, backlash and thermal dissipation remain outside this verification scope.",
     }

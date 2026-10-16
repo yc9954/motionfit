@@ -1,5 +1,37 @@
 {
   "preset": "wipe",
+  "source": "explicit_synthetic_preset",
+  "orientation_mode": "free",
+  "quality": {
+    "measured_frame_count": 181,
+    "visible_fraction": 1.0,
+    "interpolated_fraction": 0.0,
+    "timestamps_normalized_to_start": true
+  },
+  "retargeting": {
+    "input_coordinate_system": "robot_world_m",
+    "basis_columns": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "forward_translation_m": 0.0,
+    "length_scale": 1.000001,
+    "method": "shoulder_relative_anthropometric_scaling",
+    "assumption": "Camera depth establishes forward; no calibrated object contact or grasp inference."
+  },
   "fps": 100,
   "duration_s": 6.0,
   "human_arm_length_m": 0.55,

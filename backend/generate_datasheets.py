@@ -1,4 +1,4 @@
-"""Generate authentic engineering PDF datasheets, prices.csv, and catalog.json for MotionFit."""
+"""Generate project reference PDF datasheets, prices.csv, and catalog.json for MotionFit."""
 
 from __future__ import annotations
 
@@ -375,12 +375,13 @@ def _render_pdf(part: dict, out_path: Path) -> None:
         # Page 1: Technical Specifications & Performance Curve
         fig = plt.figure(figsize=(8.27, 11.69))  # A4
         fig.patch.set_facecolor("#ffffff")
+        fig.text(0.5, 0.015, "MotionFit-generated reference — not a manufacturer original; verify specifications", ha="center", fontsize=8, color="#92400e")
         ax_header = fig.add_axes([0.07, 0.87, 0.86, 0.09])
         ax_header.axis("off")
         ax_header.text(
             0.0,
             0.72,
-            f"{part['vendor']} — {part['series']} Engineering Datasheet",
+            f"MotionFit Reference — {part['vendor']} {part['series']}",
             fontsize=11,
             fontweight="bold",
             color="#2563eb",
@@ -483,7 +484,7 @@ def _render_pdf(part: dict, out_path: Path) -> None:
             taus = np.linspace(0, tau_s, 100)
             speeds = w_rads * (1.0 - taus / tau_s)
             ax_plot.plot(taus, speeds, color="#2563eb", linewidth=2.2, label="Linear Torque-Speed Boundary")
-            ax_plot.axvline(tau_c, color="#16a34a", linestyle="--", linewidth=1.6, label=f"Continuous Limit ({tau_c:.2f} N·m)")
+            ax_plot.axvline(tau_c, color="#16a34a", linestyle="--", linewidth=1.6, label=f"Catalog Continuous Assumption ({tau_c:.2f} N·m)")
             ax_plot.axvline(0.8 * tau_s, color="#dc2626", linestyle=":", linewidth=1.6, label=f"80% Peak Safety Line ({0.8*tau_s:.2f} N·m)")
             ax_plot.fill_betweenx(speeds, 0, np.minimum(taus, tau_c), color="#dcfce7", alpha=0.5, label="Continuous Safe Zone")
             ax_plot.set_xlabel("Output Torque [N·m]", fontsize=9)
@@ -510,22 +511,23 @@ def _render_pdf(part: dict, out_path: Path) -> None:
         # Page 2: Mechanical Interface, Mounting & Application Notes
         fig2 = plt.figure(figsize=(8.27, 11.69))
         fig2.patch.set_facecolor("#ffffff")
+        fig2.text(0.5, 0.015, "MotionFit-generated reference — not a manufacturer original; verify specifications", ha="center", fontsize=8, color="#92400e")
         ax2 = fig2.add_axes([0.07, 0.07, 0.86, 0.86])
         ax2.axis("off")
-        ax2.text(0.0, 0.96, f"{part['part_id']} — Mechanical Drawing & Operating Guidelines", fontsize=14, fontweight="bold", color="#0f172a")
+        ax2.text(0.0, 0.96, f"{part['part_id']} — Project Reference & Review Notes", fontsize=14, fontweight="bold", color="#0f172a")
         ax2.text(1.0, 0.96, f"Document: {part['doc']} | Page 2 of 2", fontsize=9, color="#475569", ha="right")
         notes = [
             "2. Mechanical Mounting & Frame Integration",
             f"   - Housing Envelope: {part['dimensions_mm'][0]} mm x {part['dimensions_mm'][1]} mm x {part['dimensions_mm'][2]} mm",
-            f"   - Total Verified Mass: {part['mass_raw']} ({part['mass_kg']:.4f} kg)",
-            "   - Mounting Pattern: M2.5 / M3 ISO radial & horn flange threads",
+            f"   - Catalog Mass (unverified): {part['mass_raw']} ({part['mass_kg']:.4f} kg)",
+            "   - Mounting Pattern: Not verified; obtain manufacturer flange/shaft drawings.",
             "",
             "3. Thermal & Duty-Cycle Notes",
-            "   - Continuous operation must remain at or below the continuous rated torque.",
-            "   - If continuous torque is not explicitly tabulated on Page 1, apply a 0.33x stall torque derating factor.",
-            "   - Peak torque operation (>80% of available speed-dependent torque) risks step loss or thermal shutdown.",
+            "   - Catalog continuous torque is an input assumption until its manufacturer rating is checked.",
+            "   - The 0.33x stall estimate, where used, is a heuristic rather than a measured thermal rating.",
+            "   - The linear torque-speed envelope is a screening model, not a measured performance curve.",
             "",
-            "4. Citation Verification Hash",
+            "4. Project Reference Index",
             f"   - Part ID: {part['part_id']} | Source Document: {part['doc']} | Spec Table: Page 1",
         ]
         ax2.text(0.0, 0.86, "\n".join(notes), fontsize=10, color="#334155", va="top", family="monospace")
@@ -630,10 +632,14 @@ def generate_all() -> dict:
                 "confidence": "high",
                 "user_confirmed": True,
             }
+        entry["provenance"] = {"source": "project_generated_reference", "manufacturer_verified": False,
+                               "requires_spec_review": True, "source_url": p.get("source_url")}
         catalog_parts.append(entry)
 
     catalog = {
         "catalog_id": "demo-catalog-v1",
+        "provenance": {"source": "project_generated_reference", "manufacturer_verified": False, "requires_spec_review": True,
+                       "note": "Bundled PDFs are project-generated reference documents, not manufacturer originals."},
         "confirmed": True,
         "spot_check_passed": True,
         "parts": catalog_parts,

@@ -1,5 +1,7 @@
 {
   "preset": "wipe",
+  "source": "explicit_synthetic_preset",
+  "coordinate_system": "robot_world_m",
   "fps": 30,
   "arm_side": "right",
   "duration_s": 6.0,

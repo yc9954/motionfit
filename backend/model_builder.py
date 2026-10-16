@@ -72,10 +72,17 @@ def get_joint_actuator_specs(joint_cfg: dict[str, Any], catalog: dict[str, Any])
         raise ValueError(f"Unknown or invalid actuator_id: {act_id}")
 
     tau_s_motor = _val(act.get("stall_torque_nm"))
-    tau_cont_motor = _val(act.get("continuous_torque_nm"), 0.33 * tau_s_motor)
+    tau_cont_motor = _val(act.get("continuous_torque_nm"))
     omega_0_motor = _val(act.get("no_load_speed_rad_s"))
     mass_kg = _val(act.get("mass_kg"))
     price_usd = _val(act.get("price_usd"))
+
+    for field, value in (("stall_torque_nm", tau_s_motor), ("continuous_torque_nm", tau_cont_motor),
+                         ("no_load_speed_rad_s", omega_0_motor), ("mass_kg", mass_kg)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"Actuator {act_id} requires a finite positive {field}; review catalog extraction.")
+    if not isinstance(act.get("price_usd"), dict) or act["price_usd"].get("value") is None or not math.isfinite(price_usd) or price_usd < 0:
+        raise ValueError(f"Actuator {act_id} requires a finite non-negative catalog price.")
 
     ratio = 1.0
     efficiency = 1.0
@@ -85,11 +92,17 @@ def get_joint_actuator_specs(joint_cfg: dict[str, Any], catalog: dict[str, Any])
         gb = find_catalog_part(gb_id, catalog)
         if gb is None or gb.get("type") != "gearbox":
             raise ValueError(f"Unknown or invalid gearbox_id: {gb_id}")
-        ratio = _val(gb.get("ratio"), 1.0)
-        efficiency = _val(gb.get("efficiency"), 1.0)
+        ratio = _val(gb.get("ratio"))
+        efficiency = _val(gb.get("efficiency"))
         rated_out_max = _val(gb.get("rated_output_torque_nm"), float("inf"))
-        mass_kg += _val(gb.get("mass_kg"))
-        price_usd += _val(gb.get("price_usd"))
+        gb_mass = _val(gb.get("mass_kg"))
+        gb_price = _val(gb.get("price_usd"))
+        if (not all(math.isfinite(x) for x in (ratio, efficiency, rated_out_max, gb_mass, gb_price))
+                or ratio < 1 or not (0 < efficiency <= 1) or rated_out_max <= 0 or gb_mass <= 0
+                or not isinstance(gb.get("price_usd"), dict) or gb["price_usd"].get("value") is None or gb_price < 0):
+            raise ValueError(f"Gearbox {gb_id} has missing or invalid mechanical/price specifications.")
+        mass_kg += gb_mass
+        price_usd += gb_price
 
     tau_s = min(tau_s_motor * ratio * efficiency, rated_out_max * 1.5)
     tau_cont = min(tau_cont_motor * ratio * efficiency, rated_out_max)
@@ -109,7 +122,9 @@ def get_joint_actuator_specs(joint_cfg: dict[str, Any], catalog: dict[str, Any])
         "omega_nl_eff": float(omega_0),
         "mass_kg": float(mass_kg),
         "price_usd": float(price_usd),
-        "dimensions_mm": act.get("dimensions_mm", [34.0, 50.0, 34.0]),
+        "dimensions_mm": act.get("dimensions_mm"),
+        "continuous_torque_derived": bool((act.get("continuous_torque_nm") or {}).get("derived", False)),
+        "catalog_source": act.get("provenance", {}).get("source", "user_catalog_unverified"),
         "vendor": act.get("vendor", "ROBOTIS"),
         "series": act.get("series", "DYNAMIXEL"),
     }

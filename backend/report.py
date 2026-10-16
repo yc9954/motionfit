@@ -35,15 +35,15 @@ def _collect_allowed_numbers(*objects: Any) -> List[float]:
 
     for root in objects:
         _walk(root)
-    # Also include standard small integers (0..20, 100) and percentages/deltas derived from initial/final
-    for i in range(0, 25):
-        nums.append(float(i))
-    nums.append(100.0)
     return nums
 
 
 def verify_prose_numbers(prose: Dict[str, str], allowed_numbers: List[float], rel_tol: float = 0.025) -> bool:
-    """Confirm every number in prose appears in iterations.json, catalog.json, or design.json."""
+    """Check numeric membership only; this does not establish field/unit semantics.
+
+    Reports render authoritative measurements in deterministic paragraphs and
+    tables instead of using this helper to approve model-written claims.
+    """
     text = " ".join(str(v) for v in prose.values())
     # Strip known model identifiers like J1, J2, J3, J4, XM430-W350, XM540-W270, PG20-2, etc.
     cleaned = re.sub(r"\b(?:J[1-4]|XM\d+-W\d+|XL\d+-W\d+|XH\d+-W\d+|PH\d+-\d+-S\d+-R|AK\d+-\d+|APEX-PG20-\d+|PG20-\d+|v\d+)\b", "", text)
@@ -214,9 +214,11 @@ def render_solution_report(
     """Render the self-contained HTML engineering verification report."""
     iterations = loop_result["iterations"]
     initial_it = iterations[0]
-    final_it = iterations[-1]
+    final_it = next((it for it in iterations if it.get("design_id") == final_design.get("design_id")), iterations[-1])
     initial_metrics = initial_it["metrics"]
-    final_metrics = final_it["metrics"]
+    final_metrics = loop_result.get("final_metrics", final_it["metrics"])
+    final_passed = bool(final_it["check"]["passed"])
+    initial_passed = bool(initial_it["check"]["passed"])
 
     mass_delta_kg = round(float(final_metrics["total_mass_kg"]) - float(initial_metrics["total_mass_kg"]), 4)
     cost_delta_usd = round(float(final_metrics["total_cost_usd"]) - float(initial_metrics["total_cost_usd"]), 2)
@@ -228,34 +230,28 @@ def render_solution_report(
         intent=intent,
     )
 
-    allowed_nums = _collect_allowed_numbers(
-        initial_design,
-        final_design,
-        catalog,
-        iterations,
-        loop_result.get("naive_baseline"),
-        mass_delta_kg,
-        cost_delta_usd,
+    # Values and pass/fail statements are paired with their exact record. A
+    # numerical allow-list cannot verify that an LLM used a number with the
+    # correct field, unit or selected design.
+    initial_state = "passed" if initial_passed else "failed"
+    final_state = "passed" if final_passed else "failed"
+    prose["executive_summary"] = (
+        f"Initial design {initial_design['design_id']} {initial_state} verification with target tracking RMSE "
+        f"{initial_metrics['ee_rmse_mm']:.3f} mm. Selected design {final_design['design_id']} {final_state} "
+        f"verification with target tracking RMSE {final_metrics['ee_rmse_mm']:.3f} mm, "
+        f"arm mass {final_metrics['total_mass_kg']:.4f} kg and catalog BOM cost ${final_metrics['total_cost_usd']:.2f}."
     )
-    if not verify_prose_numbers(prose, allowed_nums):
-        # Deterministic fallback prose using only verified numbers
-        prose = {
-            "executive_summary": (
-                f"Initial design {initial_design['design_id']} failed verification with EE tracking RMSE "
-                f"{initial_metrics['ee_rmse_mm']:.2f} mm. Final verified design {final_design['design_id']} "
-                f"passes all 17 checks with EE tracking RMSE {final_metrics['ee_rmse_mm']:.2f} mm, total mass "
-                f"{final_metrics['total_mass_kg']:.3f} kg, and total BOM cost ${final_metrics['total_cost_usd']:.2f}."
-            ),
-            "coupling_analysis": (
-                f"Shoulder J2 required torque peaked at {initial_metrics['joints']['J2']['peak_req_nm']:.2f} N·m "
-                f"with RMS {initial_metrics['joints']['J2']['rms_req_nm']:.2f} N·m. Upgrading J2 reduced J2 "
-                f"peak ratio to {final_metrics['joints']['J2']['peak_ratio']:.3f} and RMS ratio to "
-                f"{final_metrics['joints']['J2']['rms_ratio']:.3f} while keeping J1 within limits."
-            ),
-            "recommendation_notes": (
-                "Verify mechanical mounting flange geometry and continuous thermal dissipation under ambient enclosure conditions."
-            ),
-        }
+    if final_metrics.get("orientation_mode") in ("keep_level", "keep_upright"):
+        prose["executive_summary"] += (
+            f" Constrained tool pitch maximum deviation is {final_metrics['tool_pitch_max_error_deg']:.3f} degrees "
+            f"against a {float(final_design['thresholds'].get('tool_pitch_max_error_deg', 5.0)):.3f} degree limit."
+        )
+    source_info = catalog.get("provenance", {})
+    if source_info.get("source") == "project_generated_reference" or str(catalog.get("catalog_id", "")).startswith("demo-"):
+        prose["recommendation_notes"] += (
+            " Bundled PDFs are project-generated reference documents, not manufacturer original datasheets. "
+            "Catalog specifications, thermal estimates, prices and mounting dimensions require source review."
+        )
 
     # Build SVG plots
     initial_trace = loop_result["initial_trace"]
@@ -361,6 +357,7 @@ def render_solution_report(
                 "doc": doc,
                 "page": page,
                 "derived": derived,
+                "source_note": part.get("provenance", {}).get("source", source_info.get("source", "user_catalog_unverified")),
             }
         )
 

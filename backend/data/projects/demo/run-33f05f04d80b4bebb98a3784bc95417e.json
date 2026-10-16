@@ -1,0 +1,719 @@
+{
+  "run_id": "run-33f05f04d80b4bebb98a3784bc95417e",
+  "project_id": "demo",
+  "status": "failed",
+  "fingerprint": "9fb67885ce43d90a72eea0f1753f6bcb58500fe837c5fac101987727e267d45f",
+  "revision": 2,
+  "started_at": "2026-10-16T05:32:14.859858+00:00",
+  "events": [
+    {
+      "event": "queued",
+      "type": "queued",
+      "message": "Starting measured-motion verification",
+      "sequence": 1,
+      "timestamp": "2026-10-16T05:32:14.859871+00:00"
+    },
+    {
+      "event": "loop_started",
+      "timestamp": "2026-10-16T05:32:14.860574+00:00",
+      "design_id": "demo-v0",
+      "max_iterations": 4,
+      "optimize_after_pass": true,
+      "sequence": 2
+    },
+    {
+      "event": "simulating",
+      "timestamp": "2026-10-16T05:32:14.861049+00:00",
+      "iteration": 0,
+      "design_id": "demo-v0",
+      "joints": {
+        "J1": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J2": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null
+        }
+      },
+      "links": {
+        "base_height_m": 0.12,
+        "upper_arm_m": 0.3,
+        "forearm_m": 0.25,
+        "wrist_to_tool_m": 0.08,
+        "tube_profile": "al_tube_25x2"
+      },
+      "sequence": 3
+    },
+    {
+      "event": "iteration_simulated",
+      "timestamp": "2026-10-16T05:32:15.055229+00:00",
+      "iteration": 0,
+      "design_id": "demo-v0",
+      "passed": false,
+      "ee_rmse_mm": 284.64,
+      "total_mass_kg": 0.7878,
+      "total_cost_usd": 1101.15,
+      "violations": [
+        {
+          "check": "ee_rmse",
+          "passed": false,
+          "value": 284.64,
+          "limit": 15.0,
+          "margin": 17.976,
+          "unit": "mm",
+          "t_s": 3.2,
+          "phase": "extended_bottle_lift_and_transfer",
+          "ee_max_err_mm": 777.39
+        },
+        {
+          "check": "j2_rms_torque",
+          "passed": false,
+          "value": 1.7299,
+          "limit": 1.0,
+          "margin": 0.7299,
+          "unit": "ratio",
+          "joint": "J2",
+          "t_s": 3.27,
+          "phase": "extended_bottle_lift_and_transfer",
+          "rms_req_nm": 2.335,
+          "tau_cont_eff_nm": 1.35
+        },
+        {
+          "check": "j2_peak_torque",
+          "passed": false,
+          "value": 1.1253,
+          "limit": 0.8,
+          "margin": 0.4066,
+          "unit": "ratio",
+          "joint": "J2",
+          "t_s": 3.27,
+          "phase": "extended_bottle_lift_and_transfer",
+          "peak_req_nm": 4.248,
+          "tau_avail_at_peak_nm": 3.65,
+          "saturated_time_s": 4.292
+        }
+      ],
+      "checks": {
+        "ik_reachable": true,
+        "ee_rmse": false,
+        "j1_peak_torque": true,
+        "j1_rms_torque": true,
+        "j1_peak_speed": true,
+        "j2_peak_torque": false,
+        "j2_rms_torque": false,
+        "j2_peak_speed": true,
+        "j3_peak_torque": true,
+        "j3_rms_torque": true,
+        "j3_peak_speed": true,
+        "j4_peak_torque": true,
+        "j4_rms_torque": true,
+        "j4_peak_speed": true,
+        "total_mass": true,
+        "total_cost": true,
+        "reach": true
+      },
+      "joints": {
+        "J1": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 0.119,
+          "tau_avail_at_peak_nm": 3.8745,
+          "peak_ratio": 0.0307,
+          "t_peak_s": 2.27,
+          "rms_req_nm": 0.0447,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 0.0331,
+          "peak_speed_rad_s": 0.3681,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.0764,
+          "t_peak_speed_s": 0.0,
+          "saturated_time_s": 0.0,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J2": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 4.248,
+          "tau_avail_at_peak_nm": 3.6496,
+          "peak_ratio": 1.1253,
+          "t_peak_s": 3.27,
+          "rms_req_nm": 2.3353,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 1.7299,
+          "peak_speed_rad_s": 0.839,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.1742,
+          "t_peak_speed_s": 3.67,
+          "saturated_time_s": 4.292,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 1.9324,
+          "tau_avail_at_peak_nm": 4.0311,
+          "peak_ratio": 0.4752,
+          "t_peak_s": 3.16,
+          "rms_req_nm": 1.1149,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 0.8259,
+          "peak_speed_rad_s": 0.2259,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.0469,
+          "t_peak_speed_s": 3.75,
+          "saturated_time_s": 4.82,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null,
+          "peak_req_nm": 0.3737,
+          "tau_avail_at_peak_nm": 1.3897,
+          "peak_ratio": 0.2683,
+          "t_peak_s": 3.03,
+          "rms_req_nm": 0.2262,
+          "tau_cont_eff_nm": 0.462,
+          "rms_ratio": 0.4895,
+          "peak_speed_rad_s": 0.0819,
+          "omega_nl_eff_rad_s": 6.3879,
+          "speed_ratio": 0.0128,
+          "t_peak_speed_s": 1.75,
+          "saturated_time_s": 3.962,
+          "tau_stall_eff_nm": 1.4
+        }
+      },
+      "prediction_vs_measured": null,
+      "sequence": 4
+    },
+    {
+      "event": "argon_thinking",
+      "timestamp": "2026-10-16T05:32:15.055872+00:00",
+      "iteration": 0,
+      "mode": "failure_diagnosis",
+      "violations_count": 3,
+      "message": "Evaluating 3 measured violations against the reviewed catalog.",
+      "sequence": 5
+    },
+    {
+      "event": "argon_proposed",
+      "timestamp": "2026-10-16T05:32:17.509487+00:00",
+      "iteration": 0,
+      "interaction_id": null,
+      "thought_summary": "J2: screened 12 budget-feasible combinations against the measured load; selected XM430-W210 with APEX-PG20-3.",
+      "diagnosis": "J2: screened 12 budget-feasible combinations against the measured load; selected XM430-W210 with APEX-PG20-3.",
+      "changes": [
+        {
+          "target": "J2.actuator_id",
+          "from": "XM430-W350",
+          "to": "XM430-W210",
+          "rationale": "Catalog screening for J2 uses measured peak torque 4.2480 N·m, RMS torque 2.3353 N·m and peak speed 0.8390 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "xm430-w210.pdf",
+              "page": 1,
+              "field": "stall_torque_nm",
+              "quote": "3.0 N.m (at 12.0V, 2.3A)"
+            }
+          ]
+        },
+        {
+          "target": "J2.gearbox_id",
+          "from": null,
+          "to": "APEX-PG20-3",
+          "rationale": "Catalog screening for J2 uses measured peak torque 4.2480 N·m, RMS torque 2.3353 N·m and peak speed 0.8390 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "apex-pg20-3.pdf",
+              "page": 1,
+              "field": "ratio",
+              "quote": "3 : 1 single-stage"
+            }
+          ]
+        }
+      ],
+      "predicted_effect": {
+        "j2_peak_ratio": 0.7624,
+        "j2_rms_ratio": 0.8737,
+        "total_mass_kg": 0.8658,
+        "total_cost_usd": 1226.15
+      },
+      "used_live_api": false,
+      "model": "deterministic_catalog_search",
+      "source": "measured_load_catalog_screening",
+      "sequence": 6
+    },
+    {
+      "event": "proposal_validated",
+      "timestamp": "2026-10-16T05:32:17.511361+00:00",
+      "iteration": 0,
+      "valid": true,
+      "changes": [
+        {
+          "target": "J2.actuator_id",
+          "from": "XM430-W350",
+          "to": "XM430-W210",
+          "rationale": "Catalog screening for J2 uses measured peak torque 4.2480 N·m, RMS torque 2.3353 N·m and peak speed 0.8390 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "xm430-w210.pdf",
+              "page": 1,
+              "field": "stall_torque_nm",
+              "quote": "3.0 N.m (at 12.0V, 2.3A)"
+            }
+          ]
+        },
+        {
+          "target": "J2.gearbox_id",
+          "from": null,
+          "to": "APEX-PG20-3",
+          "rationale": "Catalog screening for J2 uses measured peak torque 4.2480 N·m, RMS torque 2.3353 N·m and peak speed 0.8390 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "apex-pg20-3.pdf",
+              "page": 1,
+              "field": "ratio",
+              "quote": "3 : 1 single-stage"
+            }
+          ]
+        }
+      ],
+      "computed_mass_kg": 0.8658,
+      "computed_cost_usd": 1226.15,
+      "sequence": 7
+    },
+    {
+      "event": "simulating",
+      "timestamp": "2026-10-16T05:32:17.512663+00:00",
+      "iteration": 1,
+      "design_id": "demo-v0-v1",
+      "joints": {
+        "J1": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J2": {
+          "actuator_id": "XM430-W210",
+          "gearbox_id": "APEX-PG20-3"
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null
+        }
+      },
+      "links": {
+        "base_height_m": 0.12,
+        "upper_arm_m": 0.3,
+        "forearm_m": 0.25,
+        "wrist_to_tool_m": 0.08,
+        "tube_profile": "al_tube_25x2"
+      },
+      "sequence": 8
+    },
+    {
+      "event": "iteration_simulated",
+      "timestamp": "2026-10-16T05:32:17.628933+00:00",
+      "iteration": 1,
+      "design_id": "demo-v0-v1",
+      "passed": true,
+      "ee_rmse_mm": 12.408,
+      "total_mass_kg": 0.8658,
+      "total_cost_usd": 1226.15,
+      "violations": [],
+      "checks": {
+        "ik_reachable": true,
+        "ee_rmse": true,
+        "j1_peak_torque": true,
+        "j1_rms_torque": true,
+        "j1_peak_speed": true,
+        "j2_peak_torque": true,
+        "j2_rms_torque": true,
+        "j2_peak_speed": true,
+        "j3_peak_torque": true,
+        "j3_rms_torque": true,
+        "j3_peak_speed": true,
+        "j4_peak_torque": true,
+        "j4_rms_torque": true,
+        "j4_peak_speed": true,
+        "total_mass": true,
+        "total_cost": true,
+        "reach": true
+      },
+      "joints": {
+        "J1": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 0.119,
+          "tau_avail_at_peak_nm": 3.8745,
+          "peak_ratio": 0.0307,
+          "t_peak_s": 2.27,
+          "rms_req_nm": 0.0447,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 0.0331,
+          "peak_speed_rad_s": 0.3681,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.0764,
+          "t_peak_speed_s": 0.0,
+          "saturated_time_s": 0.0,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J2": {
+          "actuator_id": "XM430-W210",
+          "gearbox_id": "APEX-PG20-3",
+          "peak_req_nm": 4.248,
+          "tau_avail_at_peak_nm": 6.0976,
+          "peak_ratio": 0.6488,
+          "t_peak_s": 3.37,
+          "rms_req_nm": 2.3353,
+          "tau_cont_eff_nm": 2.673,
+          "rms_ratio": 0.8737,
+          "peak_speed_rad_s": 0.839,
+          "omega_nl_eff_rad_s": 2.6878,
+          "speed_ratio": 0.3122,
+          "t_peak_speed_s": 3.67,
+          "saturated_time_s": 2.626,
+          "tau_stall_eff_nm": 8.1
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 1.9324,
+          "tau_avail_at_peak_nm": 4.0311,
+          "peak_ratio": 0.4752,
+          "t_peak_s": 3.16,
+          "rms_req_nm": 1.1149,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 0.8259,
+          "peak_speed_rad_s": 0.2259,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.0469,
+          "t_peak_speed_s": 3.75,
+          "saturated_time_s": 4.728,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null,
+          "peak_req_nm": 0.3737,
+          "tau_avail_at_peak_nm": 1.3897,
+          "peak_ratio": 0.2683,
+          "t_peak_s": 3.03,
+          "rms_req_nm": 0.2262,
+          "tau_cont_eff_nm": 0.462,
+          "rms_ratio": 0.4895,
+          "peak_speed_rad_s": 0.0819,
+          "omega_nl_eff_rad_s": 6.3879,
+          "speed_ratio": 0.0128,
+          "t_peak_speed_s": 1.75,
+          "saturated_time_s": 4.362,
+          "tau_stall_eff_nm": 1.4
+        }
+      },
+      "prediction_vs_measured": {
+        "j2_peak_ratio": {
+          "predicted": 0.7624,
+          "measured": 0.6488,
+          "abs_error": 0.1136,
+          "rel_error_pct": 17.51
+        },
+        "j2_rms_ratio": {
+          "predicted": 0.8737,
+          "measured": 0.8737,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        },
+        "total_mass_kg": {
+          "predicted": 0.8658,
+          "measured": 0.8658,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        },
+        "total_cost_usd": {
+          "predicted": 1226.15,
+          "measured": 1226.15,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        }
+      },
+      "sequence": 9
+    },
+    {
+      "event": "argon_thinking",
+      "timestamp": "2026-10-16T05:32:17.629706+00:00",
+      "iteration": 1,
+      "mode": "post_pass_optimization",
+      "message": "Current candidate passed. Testing an optional cost or mass improvement; only measured passing candidates can be selected.",
+      "sequence": 10
+    },
+    {
+      "event": "argon_proposed",
+      "timestamp": "2026-10-16T05:32:19.503253+00:00",
+      "iteration": 1,
+      "interaction_id": null,
+      "thought_summary": "J1: screened 3 budget-feasible combinations against the measured load; selected XL430-W250.",
+      "diagnosis": "J1: screened 3 budget-feasible combinations against the measured load; selected XL430-W250.",
+      "changes": [
+        {
+          "target": "J1.actuator_id",
+          "from": "XM430-W350",
+          "to": "XL430-W250",
+          "rationale": "Catalog screening for J1 uses measured peak torque 0.1190 N·m, RMS torque 0.0447 N·m and peak speed 0.3681 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "xl430-w250.pdf",
+              "page": 1,
+              "field": "stall_torque_nm",
+              "quote": "1.4 N.m (at 12.0V, 1.3A)"
+            }
+          ]
+        }
+      ],
+      "predicted_effect": {
+        "j2_peak_ratio": 0.6488,
+        "j2_rms_ratio": 0.8737,
+        "total_mass_kg": 0.841,
+        "total_cost_usd": 976.05
+      },
+      "used_live_api": false,
+      "model": "deterministic_catalog_search",
+      "source": "measured_load_catalog_screening",
+      "sequence": 11
+    },
+    {
+      "event": "proposal_validated",
+      "timestamp": "2026-10-16T05:32:19.505967+00:00",
+      "iteration": 1,
+      "valid": true,
+      "changes": [
+        {
+          "target": "J1.actuator_id",
+          "from": "XM430-W350",
+          "to": "XL430-W250",
+          "rationale": "Catalog screening for J1 uses measured peak torque 0.1190 N·m, RMS torque 0.0447 N·m and peak speed 0.3681 rad/s. This candidate requires a new coupled simulation; mechanical mounting compatibility remains unverified.",
+          "citations": [
+            {
+              "doc": "xl430-w250.pdf",
+              "page": 1,
+              "field": "stall_torque_nm",
+              "quote": "1.4 N.m (at 12.0V, 1.3A)"
+            }
+          ]
+        }
+      ],
+      "computed_mass_kg": 0.841,
+      "computed_cost_usd": 976.05,
+      "sequence": 12
+    },
+    {
+      "event": "simulating",
+      "timestamp": "2026-10-16T05:32:19.507532+00:00",
+      "iteration": 2,
+      "design_id": "demo-v0-v2",
+      "joints": {
+        "J1": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null
+        },
+        "J2": {
+          "actuator_id": "XM430-W210",
+          "gearbox_id": "APEX-PG20-3"
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null
+        }
+      },
+      "links": {
+        "base_height_m": 0.12,
+        "upper_arm_m": 0.3,
+        "forearm_m": 0.25,
+        "wrist_to_tool_m": 0.08,
+        "tube_profile": "al_tube_25x2"
+      },
+      "sequence": 13
+    },
+    {
+      "event": "iteration_simulated",
+      "timestamp": "2026-10-16T05:32:19.656317+00:00",
+      "iteration": 2,
+      "design_id": "demo-v0-v2",
+      "passed": true,
+      "ee_rmse_mm": 12.2,
+      "total_mass_kg": 0.841,
+      "total_cost_usd": 976.05,
+      "violations": [],
+      "checks": {
+        "ik_reachable": true,
+        "ee_rmse": true,
+        "j1_peak_torque": true,
+        "j1_rms_torque": true,
+        "j1_peak_speed": true,
+        "j2_peak_torque": true,
+        "j2_rms_torque": true,
+        "j2_peak_speed": true,
+        "j3_peak_torque": true,
+        "j3_rms_torque": true,
+        "j3_peak_speed": true,
+        "j4_peak_torque": true,
+        "j4_rms_torque": true,
+        "j4_peak_speed": true,
+        "total_mass": true,
+        "total_cost": true,
+        "reach": true
+      },
+      "joints": {
+        "J1": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null,
+          "peak_req_nm": 0.119,
+          "tau_avail_at_peak_nm": 1.3419,
+          "peak_ratio": 0.0887,
+          "t_peak_s": 2.27,
+          "rms_req_nm": 0.0447,
+          "tau_cont_eff_nm": 0.462,
+          "rms_ratio": 0.0968,
+          "peak_speed_rad_s": 0.3681,
+          "omega_nl_eff_rad_s": 6.3879,
+          "speed_ratio": 0.0576,
+          "t_peak_speed_s": 0.0,
+          "saturated_time_s": 0.0,
+          "tau_stall_eff_nm": 1.4
+        },
+        "J2": {
+          "actuator_id": "XM430-W210",
+          "gearbox_id": "APEX-PG20-3",
+          "peak_req_nm": 4.248,
+          "tau_avail_at_peak_nm": 6.0976,
+          "peak_ratio": 0.6488,
+          "t_peak_s": 3.37,
+          "rms_req_nm": 2.3353,
+          "tau_cont_eff_nm": 2.673,
+          "rms_ratio": 0.8737,
+          "peak_speed_rad_s": 0.839,
+          "omega_nl_eff_rad_s": 2.6878,
+          "speed_ratio": 0.3122,
+          "t_peak_speed_s": 3.67,
+          "saturated_time_s": 2.666,
+          "tau_stall_eff_nm": 8.1
+        },
+        "J3": {
+          "actuator_id": "XM430-W350",
+          "gearbox_id": null,
+          "peak_req_nm": 1.9324,
+          "tau_avail_at_peak_nm": 4.0311,
+          "peak_ratio": 0.4752,
+          "t_peak_s": 3.16,
+          "rms_req_nm": 1.1149,
+          "tau_cont_eff_nm": 1.35,
+          "rms_ratio": 0.8259,
+          "peak_speed_rad_s": 0.2259,
+          "omega_nl_eff_rad_s": 4.8171,
+          "speed_ratio": 0.0469,
+          "t_peak_speed_s": 3.75,
+          "saturated_time_s": 4.71,
+          "tau_stall_eff_nm": 4.1
+        },
+        "J4": {
+          "actuator_id": "XL430-W250",
+          "gearbox_id": null,
+          "peak_req_nm": 0.3737,
+          "tau_avail_at_peak_nm": 1.3897,
+          "peak_ratio": 0.2683,
+          "t_peak_s": 3.03,
+          "rms_req_nm": 0.2262,
+          "tau_cont_eff_nm": 0.462,
+          "rms_ratio": 0.4895,
+          "peak_speed_rad_s": 0.0819,
+          "omega_nl_eff_rad_s": 6.3879,
+          "speed_ratio": 0.0128,
+          "t_peak_speed_s": 1.75,
+          "saturated_time_s": 4.362,
+          "tau_stall_eff_nm": 1.4
+        }
+      },
+      "prediction_vs_measured": {
+        "j2_peak_ratio": {
+          "predicted": 0.6488,
+          "measured": 0.6488,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        },
+        "j2_rms_ratio": {
+          "predicted": 0.8737,
+          "measured": 0.8737,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        },
+        "total_mass_kg": {
+          "predicted": 0.841,
+          "measured": 0.841,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        },
+        "total_cost_usd": {
+          "predicted": 976.05,
+          "measured": 976.05,
+          "abs_error": 0.0,
+          "rel_error_pct": 0.0
+        }
+      },
+      "sequence": 14
+    },
+    {
+      "event": "loop_converged",
+      "timestamp": "2026-10-16T05:32:19.657209+00:00",
+      "iteration": 2,
+      "design_id": "demo-v0-v2",
+      "passed": true,
+      "ee_rmse_mm": 12.2,
+      "total_mass_kg": 0.841,
+      "total_cost_usd": 976.05,
+      "sequence": 15
+    },
+    {
+      "event": "loop_completed",
+      "timestamp": "2026-10-16T05:32:19.710758+00:00",
+      "passed": true,
+      "iterations_count": 3,
+      "final_design_id": "demo-v0-v2",
+      "initial_ee_rmse_mm": 284.64,
+      "final_ee_rmse_mm": 12.2,
+      "final_mass_kg": 0.841,
+      "final_cost_usd": 976.05,
+      "sequence": 16
+    },
+    {
+      "event": "failed",
+      "type": "failed",
+      "message": "RuntimeError: Project inputs changed during verification; result discarded",
+      "sequence": 17,
+      "timestamp": "2026-10-16T05:32:19.712632+00:00"
+    }
+  ],
+  "error": "RuntimeError: Project inputs changed during verification; result discarded",
+  "event_sequence": 17,
+  "progress": {
+    "event": "failed",
+    "type": "failed",
+    "message": "RuntimeError: Project inputs changed during verification; result discarded",
+    "sequence": 17,
+    "timestamp": "2026-10-16T05:32:19.712632+00:00"
+  },
+  "completed_at": "2026-10-16T05:32:19.712626+00:00"
+}

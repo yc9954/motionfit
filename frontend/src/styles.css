@@ -185,8 +185,10 @@ body {
 .brand-sq {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: #000;
+  border-radius: 9px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -196,25 +198,25 @@ body {
 .brand-bars {
   display: inline-flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 14px;
+  gap: 2.5px;
+  height: 16px;
 }
 
 .brand-bars i {
   display: block;
-  width: 3px;
-  background: #fff;
+  width: 3.5px;
+  background: #09090b;
   border-radius: 0.5px;
 }
 
 .brand-bars i:nth-child(1) {
-  height: 6px;
+  height: 6.5px;
 }
 .brand-bars i:nth-child(2) {
-  height: 10px;
+  height: 11px;
 }
 .brand-bars i:nth-child(3) {
-  height: 14px;
+  height: 15.5px;
 }
 
 /* Sidebar vertical flow step track */
@@ -595,6 +597,48 @@ body {
   align-items: center;
 }
 
+.hero-logo-ghost {
+  width: 90px;
+  height: 112px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  animation: ghost-float 3.2s ease-in-out infinite;
+  transform-origin: center bottom;
+  filter: drop-shadow(0 12px 24px rgba(74, 144, 226, 0.28));
+}
+
+@keyframes ghost-float {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.02, 0.98);
+  }
+}
+
+.ghost-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ghost-eye {
+  animation: ghost-blink 4s infinite ease-in-out;
+  transform-origin: center;
+  transition: transform 0.12s ease-out;
+}
+
+@keyframes ghost-blink {
+  0%, 92%, 100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.1);
+  }
+}
+
 .hero-logo {
   width: 56px;
   height: 56px;
@@ -605,30 +649,6 @@ body {
   justify-content: center;
   box-shadow: 0 6px 20px rgba(48, 43, 117, 0.18);
   margin-bottom: 18px;
-}
-
-.hero-logo span {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 22px;
-}
-
-.hero-logo i {
-  display: block;
-  width: 4px;
-  background: #000;
-  border-radius: 0.5px;
-}
-
-.hero-logo i:nth-child(1) {
-  height: 9px;
-}
-.hero-logo i:nth-child(2) {
-  height: 15px;
-}
-.hero-logo i:nth-child(3) {
-  height: 21px;
 }
 
 .hero-kicker {

@@ -126,6 +126,19 @@ def evaluate_design(
         extra={"ee_max_err_mm": round(float(metrics.get("ee_max_err_mm", 0.0)), 2)},
     )
 
+    # A level/upright requirement applies to the measured forward simulation,
+    # not merely to the IK reference. Check peak deviation so a brief spill-like
+    # pitch excursion cannot be hidden by a low time-averaged error.
+    if metrics.get("orientation_mode") in ("keep_level", "keep_upright"):
+        record_upper_bound(
+            name="tool_orientation",
+            value=float(metrics["tool_pitch_max_error_deg"]),
+            limit=float(th.get("tool_pitch_max_error_deg", 5.0)),
+            unit="deg",
+            t_s=float(metrics.get("t_worst_tool_pitch_s", 0.0)),
+            extra={"tool_pitch_rmse_deg": float(metrics["tool_pitch_rmse_deg"]), "orientation_mode": metrics["orientation_mode"]},
+        )
+
     # 3. Per-joint peak torque, RMS torque, and peak speed checks
     for j in JOINT_NAMES:
         jm = metrics["joints"][j]

@@ -214,7 +214,7 @@
       </div>
       <div>
         {% if passed %}
-          <span class="badge badge-pass">&#10003; All 17 Physics Checks Passed</span>
+          <span class="badge badge-pass">&#10003; All Configured Checks Passed</span>
         {% else %}
           <span class="badge badge-fail">&#10007; Verification Failed</span>
         {% endif %}
@@ -336,7 +336,7 @@
         </div>
         <div>
           {% if it.check.passed %}
-            <span class="badge badge-pass">PASSED ALL 17 CHECKS</span>
+            <span class="badge badge-pass">PASSED CONFIGURED CHECKS</span>
           {% else %}
             <span class="badge badge-fail">FAILED ({{ it.check.violations|length }} violations)</span>
           {% endif %}
@@ -391,7 +391,7 @@
           <strong>Baseline Comparison (Naive Heuristic: "Upgrade Failing Joint to Strongest Catalog Motor")</strong>
           &mdash; <span class="mono">{{ naive_baseline.actuator_id }}</span>
         </div>
-        <span class="badge badge-warn">NAIVE BASELINE: {{ "PASS" if naive_baseline.passed else "FAILS BUDGET / SPEED" }}</span>
+        <span class="badge badge-warn">NAIVE BASELINE: {{ "PASS" if naive_baseline.passed else "FAILED VERIFICATION" }}</span>
       </div>
       <p style="margin: 0;">{{ naive_baseline.summary }}</p>
     </div>
@@ -504,12 +504,13 @@
             <a class="cit-link" href="/api/projects/{{ project_id }}/datasheets/{{ item.doc }}#page={{ item.page }}" target="_blank">
               {{ item.doc }} (Page {{ item.page }})
             </a>
+            <div>{{ item.source_note }}</div>
           </td>
           <td>
             {% if item.derived %}
               <span class="badge badge-warn">DERIVED (0.33 &times; Stall)</span>
             {% else %}
-              <span class="badge badge-pass">EXPLICIT DATASHEET</span>
+              <span class="badge badge-pass">CATALOG VALUE — REVIEW SOURCE</span>
             {% endif %}
           </td>
         </tr>
@@ -539,7 +540,7 @@
         <li><strong>Cable &amp; Connector Routing:</strong> Harness mass, bend radius, and drag torque across J1&ndash;J4 are excluded.</li>
         <li><strong>Driver Current &amp; Bus-Voltage Droop:</strong> Power supply sag under simultaneous multi-joint peak current draw is not simulated.</li>
         <li><strong>Environmental Collision &amp; Contact Grasp Dynamics:</strong> Free-space trajectory tracking is verified; object slip, impact transients, and obstacle collisions are out of scope.</li>
-        <li><strong>Mounting Hole Pattern Compatibility:</strong> Frame transitions (e.g., 28.5&times;46.5 mm XM430 vs. 33.5&times;58.5 mm XM540 or PG20 flange adapter) require mechanical bracket updates.</li>
+        <li><strong>Mounting Hole Pattern Compatibility:</strong> Housing envelopes do not establish flange, shaft or mounting-hole compatibility. Validate manufacturer CAD and the required adapters before fabrication.</li>
       </ul>
       <p style="margin: 10px 0 0 0; color: var(--muted);"><strong>Engineering Note:</strong> {{ prose.recommendation_notes }}</p>
     </div>

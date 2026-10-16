@@ -48,6 +48,7 @@ def landmarks_to_target(
     landmarks_payload: Dict[str, Any],
     links: Dict[str, Any],
     target_fps: int = 100,
+    orientation_mode: str = "free",
 ) -> Dict[str, Any]:
     """Convert 30 fps MediaPipe world landmarks into a 100 Hz robot task-space target trajectory.
 
@@ -70,16 +71,28 @@ def landmarks_to_target(
       }
     """
     frames = landmarks_payload.get("frames", [])
-    if len(frames) < 15:
-        raise ValueError("Motion trajectory must have at least 15 frames.")
-
-    t_raw = np.array([float(f["t"]) for f in frames], dtype=float)
-    vis = np.array([float(f.get("visibility", 1.0)) for f in frames], dtype=float)
-    shoulder = np.array([f["shoulder"] for f in frames], dtype=float)
-    elbow = np.array([f["elbow"] for f in frames], dtype=float)
-    wrist = np.array([f["wrist"] for f in frames], dtype=float)
-    index_pt = np.array([f["index"] for f in frames], dtype=float)
-    hip = np.array([f["hip"] for f in frames], dtype=float)
+    if not isinstance(frames, list) or len(frames) < 15:
+        raise ValueError("Motion trajectory must have at least 15 measured frames.")
+    if orientation_mode not in ("free", "keep_level", "keep_upright"):
+        raise ValueError("orientation_mode must be free, keep_level, or keep_upright.")
+    if not isinstance(target_fps, int) or not (1 <= target_fps <= 500):
+        raise ValueError("Target sample frequency must be between 1 and 500 Hz.")
+    try:
+        t_raw = np.array([f["t"] for f in frames], dtype=float)
+        vis = np.array([f["visibility"] for f in frames], dtype=float)
+        points = {key: np.array([f[key] for f in frames], dtype=float)
+                  for key in ("shoulder", "elbow", "wrist", "index", "hip")}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Landmarks require timestamps, visibility, and shoulder/elbow/wrist/index/hip [x,y,z] arrays.") from exc
+    if (t_raw.shape != (len(frames),) or vis.shape != t_raw.shape
+            or not np.all(np.isfinite(t_raw)) or not np.all(np.diff(t_raw) > 0)):
+        raise ValueError("Landmark timestamps must be finite and strictly increasing.")
+    if not np.all(np.isfinite(vis)) or np.any((vis < 0) | (vis > 1)):
+        raise ValueError("Landmark visibility must be finite and between 0 and 1.")
+    if any(a.shape != (len(frames), 3) or not np.all(np.isfinite(a)) for a in points.values()):
+        raise ValueError("Each landmark must be a finite [x,y,z] coordinate in metres.")
+    t_raw -= t_raw[0]
+    shoulder, elbow, wrist, index_pt, hip = (points[key] for key in ("shoulder", "elbow", "wrist", "index", "hip"))
 
     # 1. Fill visibility gaps (< 0.5), rejecting if > 20% missing
     shoulder = _fill_visibility_gaps(t_raw, shoulder, vis)
@@ -95,8 +108,8 @@ def landmarks_to_target(
     l_upper_h = np.linalg.norm(elbow[hi_vis] - shoulder[hi_vis], axis=1)
     l_fore_h = np.linalg.norm(wrist[hi_vis] - elbow[hi_vis], axis=1)
     l_human = float(np.median(l_upper_h + l_fore_h))
-    if l_human < 1e-3:
-        l_human = 0.55
+    if l_human < 0.05:
+        raise ValueError("Measured arm is degenerate; use visible metre-scale world landmarks.")
 
     L1 = float(links["upper_arm_m"])
     L2 = float(links["forearm_m"])
@@ -104,25 +117,58 @@ def landmarks_to_target(
     base_h = float(links["base_height_m"])
     scale = (L1 + L2) / l_human
 
-    # 3. Express wrist in shoulder-relative frame (+z opposite hip->shoulder)
-    rel_wrist = (wrist - shoulder) * scale
-    rel_hand = index_pt - wrist
+    # 3. Use a torso-aligned frame for MediaPipe world coordinates. World
+    # landmarks are camera-relative, so the camera depth axis establishes the
+    # documented forward direction; this is retargeting, not camera calibration.
+    coordinate_system = landmarks_payload.get("coordinate_system", "robot_world_m")
+    if coordinate_system == "mediapipe_world_m":
+        up = np.median((shoulder - hip)[hi_vis], axis=0)
+        torso_length = float(np.linalg.norm(up))
+        if torso_length < 0.05:
+            raise ValueError("A visible shoulder and hip are required to establish the torso frame.")
+        up /= torso_length
+        forward = np.array([0.0, 0.0, -1.0])
+        forward -= np.dot(forward, up) * up
+        if np.linalg.norm(forward) < 0.10:
+            raise ValueError("Camera depth is parallel to the torso; record an upright side/front view.")
+        forward /= np.linalg.norm(forward)
+        left = np.cross(up, forward)
+        basis = np.stack([forward, left, up], axis=1)
+        rel_wrist = ((wrist - shoulder) @ basis) * scale
+        rel_hand = (index_pt - wrist) @ basis
+        # Translate the captured motion into a forward workspace and retain its
+        # measured excursion. Unreachable targets remain failures in the checker.
+        offset_x = max(0.21, 0.45 * (L1 + L2)) - float(np.median(rel_wrist[:, 0]))
+        offset_x = max(offset_x, 0.05 - float(np.min(rel_wrist[:, 0])))
+    elif coordinate_system == "robot_world_m":
+        basis = np.eye(3)
+        rel_wrist = (wrist - shoulder) * scale
+        rel_hand = index_pt - wrist
+        offset_x = 0.0
+    else:
+        raise ValueError(f"Unsupported landmark coordinate_system: {coordinate_system}")
 
-    # Shift to robot base frame (+z = base_height_m) and include tool offset along hand direction
     hand_norm = np.linalg.norm(rel_hand, axis=1, keepdims=True)
+    if np.mean(hand_norm[:, 0] < 1e-4) > 0.20:
+        raise ValueError("Hand direction is not measurable in enough frames.")
     hand_dir = rel_hand / np.maximum(hand_norm, 1e-6)
     p_ee_raw = rel_wrist + hand_dir * L3
+    p_ee_raw[:, 0] += offset_x
     p_ee_raw[:, 2] += base_h
+    # Use one fixed translation, not per-frame clamping, to avoid artificial
+    # velocity spikes around the yaw axis.
+    if coordinate_system == "mediapipe_world_m":
+        correction = max(0.0, 0.04 - float(np.min(p_ee_raw[:, 0])))
+        p_ee_raw[:, 0] += correction
+        offset_x += correction
 
-    # Ensure forward reach stays clear of the r=0 base singularity (r >= 0.04 m)
-    r_horiz = np.hypot(p_ee_raw[:, 0], p_ee_raw[:, 1])
-    if float(np.min(r_horiz)) < 0.04:
-        p_ee_raw[:, 0] += 0.04 - float(np.min(r_horiz))
-
-    # Tool pitch angle phi(t) in vertical plane
     horiz_hand = np.hypot(hand_dir[:, 0], hand_dir[:, 1])
-    phi_raw = np.arctan2(hand_dir[:, 2], np.maximum(horiz_hand, 1e-6))
-    phi_raw = np.clip(phi_raw, -1.4, 1.4)
+    if orientation_mode == "keep_level":
+        phi_raw = np.zeros(len(frames))
+    elif orientation_mode == "keep_upright":
+        phi_raw = np.full(len(frames), math.pi / 2.0)
+    else:
+        phi_raw = np.unwrap(np.arctan2(hand_dir[:, 2], np.maximum(horiz_hand, 1e-6)))
 
     # 4. Savitzky-Golay smoothing (window=11 at 30 fps, order=3)
     win = min(11, len(t_raw) if len(t_raw) % 2 == 1 else len(t_raw) - 1)
@@ -153,6 +199,22 @@ def landmarks_to_target(
 
     return {
         "preset": landmarks_payload.get("preset", "custom_video"),
+        "source": landmarks_payload.get("source", "measured_landmarks"),
+        "orientation_mode": orientation_mode,
+        "quality": {
+            "measured_frame_count": len(frames),
+            "visible_fraction": round(float(np.mean(vis >= 0.5)), 4),
+            "interpolated_fraction": round(float(np.mean(vis < 0.5)), 4),
+            "timestamps_normalized_to_start": True,
+        },
+        "retargeting": {
+            "input_coordinate_system": coordinate_system,
+            "basis_columns": np.round(basis, 6).tolist(),
+            "forward_translation_m": round(offset_x, 5),
+            "length_scale": round(scale, 6),
+            "method": "shoulder_relative_anthropometric_scaling",
+            "assumption": "Camera depth establishes forward; no calibrated object contact or grasp inference.",
+        },
         "fps": target_fps,
         "duration_s": round(duration_s, 3),
         "human_arm_length_m": round(l_human, 4),
@@ -250,6 +312,8 @@ def generate_preset_landmarks(
 
     return {
         "preset": preset_name,
+        "source": "explicit_synthetic_preset",
+        "coordinate_system": "robot_world_m",
         "fps": fps,
         "arm_side": "right",
         "duration_s": duration_s,
@@ -293,12 +357,7 @@ def summarize_motion(landmarks_or_target: Dict[str, Any]) -> Dict[str, Any]:
 
     frames = landmarks_or_target.get("frames", [])
     if not frames:
-        return {
-            "duration_s": 6.0,
-            "peak_cart_speed_m_s": 0.65,
-            "bbox_min": [0.10, -0.20, 0.12],
-            "bbox_max": [0.58, 0.20, 0.55],
-        }
+        raise ValueError("Motion summary requires measured frames or a task-space target.")
     t_arr = np.array([float(f["t"]) for f in frames], dtype=float)
     wr = np.array([f["wrist"] for f in frames], dtype=float)
     dt = np.maximum(np.gradient(t_arr), 1e-4)[:, None]
@@ -327,5 +386,5 @@ def process_landmarks_to_target(
             "wrist_to_tool_m": 0.08,
         },
     )
-    return landmarks_to_target(landmarks_data, links, target_fps=100)
+    return landmarks_to_target(landmarks_data, links, target_fps=100, orientation_mode=orientation_mode)
 

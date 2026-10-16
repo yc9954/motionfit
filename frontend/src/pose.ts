@@ -1,217 +1,231 @@
-/**
- * Client-side pose extraction from uploaded MP4/MOV video using MediaPipe Tasks Vision
- * with a deterministic canvas optical-centroid fallback for offline/airgapped demos.
- */
-
+/** Actual MediaPipe pose measurements. Tracking failures are reported, never replaced by a demo. */
+export type Point3 = [number, number, number];
 export interface LandmarkPoint {
   x: number;
   y: number;
   z: number;
   visibility: number;
 }
-
 export interface LandmarkFrame {
   t: number;
-  shoulder: LandmarkPoint;
-  elbow: LandmarkPoint;
-  wrist: LandmarkPoint;
-  index: LandmarkPoint;
+  visibility: number;
+  shoulder: Point3;
+  elbow: Point3;
+  wrist: Point3;
+  index: Point3;
+  hip: Point3;
+  confidence: Record<"shoulder" | "elbow" | "wrist" | "index" | "hip", number>;
 }
-
+export interface PoseOverlayFrame {
+  t: number;
+  landmarks: LandmarkPoint[];
+}
 export interface LandmarksPayload {
   fps: number;
-  preset?: string;
-  upper_arm_m: number;
-  forearm_m: number;
+  duration_s: number;
+  arm_side: "right" | "left";
+  source: "mediapipe_pose_world";
+  coordinate_system: "mediapipe_world_m";
   frames: LandmarkFrame[];
+  overlayFrames: PoseOverlayFrame[];
+  tracking: { sampled_frames: number; detected_frames: number; missing_fraction: number };
+}
+export interface PoseExtractionOptions {
+  videoEl?: HTMLVideoElement;
+  overlayCanvas?: HTMLCanvasElement;
+  armSide?: "right" | "left";
+  fps?: number;
+  maxDurationS?: number;
+  onProgress?: (pct: number, statusText: string) => void;
+  signal?: AbortSignal;
 }
 
-export async function extractLandmarksFromVideoFile(
-  file: File,
-  videoEl: HTMLVideoElement,
-  overlayCanvas: HTMLCanvasElement,
-  upperArmM: number,
-  forearmM: number,
-  onProgress?: (pct: number, statusText: string) => void
-): Promise<LandmarksPayload> {
-  const objectUrl = URL.createObjectURL(file);
-  videoEl.src = objectUrl;
-  videoEl.muted = true;
-  videoEl.playsInline = true;
+/** Select raw measured coordinates. Missing or occluded points produce no frame. */
+export function measuredPoseFrame(
+  world: Array<{ x: number; y: number; z: number; visibility?: number }> | undefined,
+  normalized: Array<{ visibility?: number }> | undefined,
+  t: number,
+  armSide: "right" | "left" = "right",
+): LandmarkFrame | null {
+  const names = ["shoulder", "elbow", "wrist", "index", "hip"] as const;
+  const indices = armSide === "right" ? [12, 14, 16, 20, 24] : [11, 13, 15, 19, 23];
+  const confidence = Object.fromEntries(names.map((name, k) => [name,
+    Math.min(world?.[indices[k]]?.visibility ?? 0, normalized?.[indices[k]]?.visibility ?? 0),
+  ])) as LandmarkFrame["confidence"];
+  const visibility = Math.min(...Object.values(confidence));
+  if (visibility < 0.5 || !world || !indices.every(i => [world[i]?.x, world[i]?.y, world[i]?.z].every(Number.isFinite))) return null;
+  const coordinates = Object.fromEntries(names.map((name, k) => {
+    const p = world[indices[k]];
+    return [name, [p.x, p.y, p.z] as Point3];
+  })) as Pick<LandmarkFrame, typeof names[number]>;
+  return { t, visibility, confidence, ...coordinates };
+}
 
-  await new Promise<void>((resolve, reject) => {
-    videoEl.onloadedmetadata = () => resolve();
-    videoEl.onerror = () => reject(new Error("Failed to load video file metadata."));
+export function validatePoseTracking(sampledFrames: number, detectedFrames: number, armSide: "right" | "left" = "right"): number {
+  const missing = 1 - detectedFrames / sampledFrames;
+  if (!Number.isFinite(missing) || missing > 0.2 || detectedFrames < 15) throw new Error(`Pose tracking failed: ${(100 * missing).toFixed(1)}% of frames lacked a visible ${armSide} arm and hip. Keep the full arm and torso in view, improve lighting, or select the other arm. No substitute motion was generated.`);
+  return missing;
+}
+
+function abortIfNeeded(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Video analysis cancelled.", "AbortError");
+}
+
+/** Register listeners before the operation, with a bounded wait and abort cleanup. */
+function waitForVideo(
+  video: HTMLVideoElement,
+  eventName: "loadedmetadata" | "loadeddata" | "seeked",
+  action: () => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      video.removeEventListener(eventName, ready);
+      video.removeEventListener("error", failed);
+      signal?.removeEventListener("abort", cancelled);
+    };
+    const ready = () => { cleanup(); resolve(); };
+    const failed = () => { cleanup(); reject(new Error("The browser could not decode this video. Use an MP4 with H.264 video.")); };
+    const cancelled = () => { cleanup(); reject(new DOMException("Video analysis cancelled.", "AbortError")); };
+    const timer = window.setTimeout(() => { cleanup(); reject(new Error(`Timed out while reading the video (${eventName}).`)); }, 15000);
+    video.addEventListener(eventName, ready, { once: true });
+    video.addEventListener("error", failed, { once: true });
+    signal?.addEventListener("abort", cancelled, { once: true });
+    if (signal?.aborted) { cancelled(); return; }
+    try { action(); } catch (error) { cleanup(); reject(error); }
   });
-
-  const duration = Math.min(Math.max(videoEl.duration || 6.0, 2.0), 15.0);
-  const fps = 30;
-  const totalFrames = Math.floor(duration * fps);
-  const ctx = overlayCanvas.getContext("2d");
-  overlayCanvas.width = videoEl.videoWidth || 640;
-  overlayCanvas.height = videoEl.videoHeight || 360;
-
-  let poseLandmarker: any = null;
-  try {
-    onProgress?.(5, "Initializing MediaPipe PoseLandmarker...");
-    const vision = await import("@mediapipe/tasks-vision");
-    const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm"
-    );
-    poseLandmarker = await vision.PoseLandmarker.createFromOptions(filesetResolver, {
-      baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-      },
-      runningMode: "VIDEO",
-      numPoses: 1,
-    });
-  } catch {
-    // Offline or sandboxed environment: use deterministic visual motion tracker
-    poseLandmarker = null;
-  }
-
-  const frames: LandmarkFrame[] = [];
-  const L = upperArmM + forearmM;
-
-  for (let i = 0; i < totalFrames; i++) {
-    const t = Number((i / fps).toFixed(4));
-    videoEl.currentTime = Math.min(t, Math.max(0, videoEl.duration - 0.01));
-    await new Promise<void>((resolve) => {
-      const handler = () => {
-        videoEl.removeEventListener("seeked", handler);
-        resolve();
-      };
-      videoEl.addEventListener("seeked", handler);
-    });
-
-    if (ctx) {
-      ctx.drawImage(videoEl, 0, 0, overlayCanvas.width, overlayCanvas.height);
-    }
-
-    let frameAdded = false;
-    if (poseLandmarker) {
-      try {
-        const result = poseLandmarker.detectForVideo(videoEl, Math.round(t * 1000));
-        const worldLm = result?.worldLandmarks?.[0];
-        const normLm = result?.landmarks?.[0];
-        if (worldLm && worldLm.length >= 20) {
-          // Right arm indices: 12 (shoulder), 14 (elbow), 16 (wrist), 20 (index)
-          const sh = worldLm[12];
-          const el = worldLm[14];
-          const wr = worldLm[16];
-          const ix = worldLm[20];
-          frames.push({
-            t,
-            shoulder: { x: 0, y: 0, z: 0, visibility: sh.visibility ?? 0.98 },
-            elbow: {
-              x: (el.x - sh.x) * L,
-              y: -(el.z - sh.z) * L,
-              z: -(el.y - sh.y) * L,
-              visibility: el.visibility ?? 0.96,
-            },
-            wrist: {
-              x: (wr.x - sh.x) * L,
-              y: -(wr.z - sh.z) * L,
-              z: -(wr.y - sh.y) * L,
-              visibility: wr.visibility ?? 0.95,
-            },
-            index: {
-              x: (ix.x - sh.x) * L,
-              y: -(ix.z - sh.z) * L,
-              z: -(ix.y - sh.y) * L,
-              visibility: ix.visibility ?? 0.94,
-            },
-          });
-          if (ctx && normLm) {
-            drawSkeletonOverlay(ctx, overlayCanvas.width, overlayCanvas.height, [
-              normLm[12],
-              normLm[14],
-              normLm[16],
-              normLm[20],
-            ]);
-          }
-          frameAdded = true;
-        }
-      } catch {
-        frameAdded = false;
-      }
-    }
-
-    if (!frameAdded) {
-      // Synthesize smooth kinematic arm landmarks modulated by video frame luminance
-      const tau = t / duration;
-      const xReach = L * (0.58 + 0.24 * Math.sin(Math.PI * tau));
-      const ySweep = L * 0.22 * Math.sin(2 * Math.PI * tau);
-      const zLift = L * (-0.02 + 0.34 * Math.sin(Math.PI * Math.pow(tau, 1.2)));
-      const elbowRatio = upperArmM / L;
-
-      const sh = { x: 0.0, y: 0.0, z: 0.0, visibility: 0.99 };
-      const el = {
-        x: xReach * elbowRatio,
-        y: ySweep * elbowRatio,
-        z: zLift * 0.45,
-        visibility: 0.98,
-      };
-      const wr = { x: xReach, y: ySweep, z: zLift, visibility: 0.97 };
-      const ix = { x: xReach + 0.06, y: ySweep, z: zLift - 0.01, visibility: 0.96 };
-      frames.push({ t, shoulder: sh, elbow: el, wrist: wr, index: ix });
-
-      if (ctx) {
-        drawSkeletonOverlay(ctx, overlayCanvas.width, overlayCanvas.height, [
-          { x: 0.32, y: 0.58 },
-          { x: 0.32 + 0.16 * (xReach / L), y: 0.58 - 0.16 * (zLift / L) },
-          { x: 0.32 + 0.34 * (xReach / L), y: 0.58 - 0.32 * (zLift / L) },
-          { x: 0.36 + 0.34 * (xReach / L), y: 0.59 - 0.32 * (zLift / L) },
-        ]);
-      }
-    }
-
-    if (i % 6 === 0 || i === totalFrames - 1) {
-      const pct = Math.round(((i + 1) / totalFrames) * 100);
-      onProgress?.(pct, `Extracting 3D arm landmarks (${i + 1}/${totalFrames} frames)...`);
-      await new Promise((r) => setTimeout(r, 0));
-    }
-  }
-
-  return {
-    fps,
-    preset: "custom_video",
-    upper_arm_m: upperArmM,
-    forearm_m: forearmM,
-    frames,
-  };
 }
 
-function drawSkeletonOverlay(
+export function drawPoseOverlay(
   ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  pts: Array<{ x: number; y: number }>
+  width: number,
+  height: number,
+  landmarks: LandmarkPoint[],
+  armSide: "right" | "left" = "right",
 ): void {
+  const [shoulder, elbow, wrist, index, hip] = armSide === "right" ? [12, 14, 16, 20, 24] : [11, 13, 15, 19, 23];
+  const visible = (i: number) => landmarks[i] && landmarks[i].visibility >= 0.5;
   ctx.save();
   ctx.strokeStyle = "#38bdf8";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  pts.forEach((p, idx) => {
-    const px = p.x * w;
-    const py = p.y * h;
-    if (idx === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  });
-  ctx.stroke();
-
-  const colors = ["#38bdf8", "#22c55e", "#f59e0b", "#a855f7"];
-  pts.forEach((p, idx) => {
-    const px = p.x * w;
-    const py = p.y * h;
-    ctx.fillStyle = colors[idx % colors.length];
+  ctx.lineWidth = Math.max(2, width / 240);
+  for (const [a, b] of [[hip, shoulder], [shoulder, elbow], [elbow, wrist], [wrist, index]]) {
+    if (!visible(a) || !visible(b)) continue;
     ctx.beginPath();
-    ctx.arc(px, py, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#0f172a";
-    ctx.lineWidth = 1.5;
+    ctx.moveTo(landmarks[a].x * width, landmarks[a].y * height);
+    ctx.lineTo(landmarks[b].x * width, landmarks[b].y * height);
     ctx.stroke();
-  });
+  }
+  ctx.fillStyle = "#22c55e";
+  for (const i of [shoulder, elbow, wrist, index, hip]) {
+    if (!visible(i)) continue;
+    ctx.beginPath();
+    ctx.arc(landmarks[i].x * width, landmarks[i].y * height, Math.max(3, width / 150), 0, 2 * Math.PI);
+    ctx.fill();
+  }
   ctx.restore();
+}
+
+/**
+ * Return unscaled MediaPipe world coordinates in metres. The backend owns the
+ * camera-to-robot transform and anthropometric scaling. Low-confidence samples
+ * are omitted with their actual timestamps and an explicit missing-frame count.
+ * A supplied video element's existing preview source is restored on completion.
+ */
+export async function extractLandmarksFromVideoFile(
+  file: File,
+  options: PoseExtractionOptions = {},
+): Promise<LandmarksPayload> {
+  const { overlayCanvas, onProgress, signal } = options;
+  const armSide = options.armSide ?? "right";
+  const fps = options.fps ?? 30;
+  if (!Number.isFinite(fps) || fps < 5 || fps > 60) throw new Error("Pose sampling rate must be between 5 and 60 fps.");
+  const video = options.videoEl ?? document.createElement("video");
+  const previousSrc = video.getAttribute("src");
+  const previousTime = video.currentTime;
+  const previousMuted = video.muted;
+  const wasPaused = video.paused;
+  const objectUrl = URL.createObjectURL(file);
+  let detector: import("@mediapipe/tasks-vision").PoseLandmarker | undefined;
+  video.pause();
+  video.muted = true;
+  video.playsInline = true;
+  try {
+    abortIfNeeded(signal);
+    onProgress?.(0, "Reading video metadata…");
+    await waitForVideo(video, "loadedmetadata", () => { video.src = objectUrl; video.load(); }, signal);
+    const duration = video.duration;
+    const maxDuration = options.maxDurationS ?? 60;
+    if (!Number.isFinite(duration) || duration < 0.5) throw new Error("Video must contain at least 0.5 seconds of decodable motion.");
+    if (duration > maxDuration) throw new Error(`Video is ${duration.toFixed(1)} seconds long. Trim it to ${maxDuration} seconds or less; no frames were silently discarded.`);
+    if (video.readyState < 2) await waitForVideo(video, "loadeddata", () => {}, signal);
+    if (overlayCanvas) {
+      overlayCanvas.width = video.videoWidth;
+      overlayCanvas.height = video.videoHeight;
+    }
+    const ctx = overlayCanvas?.getContext("2d");
+    onProgress?.(2, "Loading MediaPipe pose model…");
+    const vision = await import("@mediapipe/tasks-vision");
+    const fileset = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm");
+    abortIfNeeded(signal);
+    detector = await vision.PoseLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
+      runningMode: "VIDEO",
+      numPoses: 1,
+      minPoseDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    const frames: LandmarkFrame[] = [];
+    const overlayFrames: PoseOverlayFrame[] = [];
+    const total = Math.max(15, Math.floor(duration * fps));
+    for (let i = 0; i < total; i++) {
+      abortIfNeeded(signal);
+      const t = Math.min(i / fps, duration - 0.001);
+      // Seeking to an already decoded t=0 does not fire seeked in several browsers.
+      if (Math.abs(video.currentTime - t) > 0.0001 || video.readyState < 2) {
+        await waitForVideo(video, "seeked", () => { video.currentTime = t; }, signal);
+      }
+      if (ctx && overlayCanvas) ctx.drawImage(video, 0, 0, overlayCanvas.width, overlayCanvas.height);
+      const result = detector.detectForVideo(video, i * 1000 / fps);
+      const world = result.worldLandmarks[0];
+      const normalized = result.landmarks[0];
+      if (normalized) {
+        const points = normalized.map(p => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility ?? 0 }));
+        overlayFrames.push({ t, landmarks: points });
+        if (ctx && overlayCanvas) drawPoseOverlay(ctx, overlayCanvas.width, overlayCanvas.height, points, armSide);
+      } else overlayFrames.push({ t, landmarks: [] });
+      const measurement = measuredPoseFrame(world, normalized, t, armSide);
+      if (measurement) frames.push(measurement);
+      if (i % 5 === 0 || i === total - 1) {
+        onProgress?.(Math.round(5 + 95 * (i + 1) / total), `Measured ${frames.length}/${i + 1} frames (${armSide} arm)…`);
+        await new Promise(resolve => window.setTimeout(resolve, 0));
+      }
+    }
+    const missing = validatePoseTracking(total, frames.length, armSide);
+    return {
+      fps, duration_s: duration, arm_side: armSide, source: "mediapipe_pose_world", coordinate_system: "mediapipe_world_m",
+      frames, overlayFrames,
+      tracking: { sampled_frames: total, detected_frames: frames.length, missing_fraction: missing },
+    };
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error("Video pose extraction failed. No substitute motion was generated.");
+  } finally {
+    detector?.close();
+    video.pause();
+    if (previousSrc) {
+      video.src = previousSrc;
+      if (Number.isFinite(previousTime)) {
+        const restoreTime = () => { video.currentTime = previousTime; };
+        video.addEventListener("loadedmetadata", restoreTime, { once: true });
+      }
+      video.load();
+      if (!wasPaused) void video.play().catch(() => {});
+    } else {
+      video.removeAttribute("src");
+      video.load();
+    }
+    video.muted = previousMuted;
+    URL.revokeObjectURL(objectUrl);
+  }
 }

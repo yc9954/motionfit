@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+import time
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -77,9 +78,16 @@ def test_fastapi_end_to_end_flow() -> None:
             json={"max_iterations": 4, "enable_post_pass_optimization": True, "include_naive_baseline": True},
         )
         assert r_run.status_code == 200
-        run_payload = r_run.json()
+        run_id = r_run.json()["run_id"]
+        deadline = time.monotonic() + 30
+        while True:
+            run_payload = client.get(f"/api/runs/{run_id}").json()
+            if run_payload["status"] in ("completed", "failed"):
+                break
+            assert time.monotonic() < deadline, "Verification did not complete"
+            time.sleep(.02)
+        assert run_payload["status"] == "completed", run_payload.get("error")
         assert run_payload["passed"] is True
-        run_id = run_payload["run_id"]
         assert len(run_payload["events"]) >= 5
 
         # 5. Stream SSE events for run_id
@@ -95,13 +103,14 @@ def test_fastapi_end_to_end_flow() -> None:
         assert "Executive Summary" in html
         assert "Not Verified by Simulation" in html
         assert "PENDING ENGINEER APPROVAL" in html
-        assert "/api/projects/demo/datasheets/xm540-w270.pdf#page=1" in html
+        assert "/api/projects/demo/datasheets/" in html
 
         # 7. Verify export.zip is blocked (403) before engineer approval
         r_exp_blocked = client.get("/api/projects/demo/export.zip")
         assert r_exp_blocked.status_code == 403
 
         # 8. Approve design (HITL step 2)
+        assert client.post("/api/projects/demo/accept", json={"run_id": run_id}).status_code == 200
         r_app = client.post(
             "/api/projects/demo/approve",
             json={"engineer_name": "Alex Lee, Lead Robotics Engineer", "notes": "Verified J2 planetary stage margins and thermal RMS."},

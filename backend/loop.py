@@ -172,6 +172,7 @@ def run_design_loop(
             "proposal": None,
             "thought_summary": None,
             "validation": None,
+            "proposal_source": None,
             "elapsed_s": round(time.time() - t_iter_start, 3),
         }
         iterations.append(iter_record)
@@ -201,7 +202,7 @@ def run_design_loop(
                     {
                         "iteration": k,
                         "mode": "post_pass_optimization",
-                        "message": "Design passed all 17 checks! Running 1 extra Argon iteration to minimize mass & cost while staying green...",
+                        "message": "Current candidate passed. Testing an optional cost or mass improvement; only measured passing candidates can be selected.",
                     },
                 )
             else:
@@ -224,7 +225,7 @@ def run_design_loop(
                 {
                     "iteration": k,
                     "passed": check_res["passed"],
-                    "reason": "Reached maximum iterations (5).",
+                    "reason": f"Reached maximum iterations ({max_iterations}).",
                 },
             )
             break
@@ -237,7 +238,7 @@ def run_design_loop(
                     "iteration": k,
                     "mode": "failure_diagnosis",
                     "violations_count": len(check_res["violations"]),
-                    "message": f"Gemini 4 Argon (thinking_level=high) diagnosing {len(check_res['violations'])} violation(s)...",
+                    "message": f"Evaluating {len(check_res['violations'])} measured violations against the reviewed catalog.",
                 },
             )
 
@@ -251,9 +252,14 @@ def run_design_loop(
             is_first_turn=(interaction_id is None),
             optimize_mode=did_post_pass_opt,
         )
-        interaction_id = argon_res["interaction_id"]
+        interaction_id = argon_res.get("interaction_id") if argon_res.get("used_live_api") else None
         proposal = argon_res["proposal"]
         thought_summary = argon_res["thought_summary"]
+        iter_record["proposal_source"] = {
+            "used_live_api": bool(argon_res.get("used_live_api")),
+            "model": argon_res.get("model"),
+            "source": argon_res.get("source", "model" if argon_res.get("used_live_api") else "deterministic_catalog_search"),
+        }
 
         emit(
             "argon_proposed",
@@ -264,8 +270,16 @@ def run_design_loop(
                 "diagnosis": proposal.get("diagnosis"),
                 "changes": proposal.get("changes"),
                 "predicted_effect": proposal.get("predicted_effect"),
+                **iter_record["proposal_source"],
             },
         )
+
+        if not proposal.get("changes"):
+            iter_record["proposal"] = proposal
+            iter_record["thought_summary"] = thought_summary
+            iter_record["elapsed_s"] = round(time.time() - t_iter_start, 3)
+            emit("no_feasible_proposal", {"iteration": k, "reason": proposal.get("diagnosis", "No feasible additional proposal was found in this bounded search.")})
+            break
 
         # Validate proposal with deterministic referee validate.py
         val_res = validate_proposal(proposal, current_design, catalog, materials)
@@ -287,9 +301,10 @@ def run_design_loop(
                 catalog=catalog,
                 intent=intent,
             )
-            interaction_id = repaired_res["interaction_id"]
+            interaction_id = repaired_res.get("interaction_id") if repaired_res.get("used_live_api") else None
             proposal = repaired_res["proposal"]
             thought_summary = repaired_res["thought_summary"]
+            iter_record["proposal_source"] = {"used_live_api": bool(repaired_res.get("used_live_api")), "model": repaired_res.get("model"), "source": repaired_res.get("source", "model" if repaired_res.get("used_live_api") else "deterministic_catalog_search")}
             val_res = validate_proposal(proposal, current_design, catalog, materials)
 
             if not val_res["valid"]:
@@ -367,6 +382,9 @@ def run_design_loop(
         "final_trace": best_iter["trace"],
         "iterations": iterations,
         "naive_baseline": naive_baseline,
+        "selected_iteration": best_iter["iteration"],
+        "verification_scope": best_iter.get("verification_scope", sim_res.get("verification_scope", {})),
+        "search_status": "passing_candidate_found" if best_iter["check"]["passed"] else "bounded_search_without_passing_candidate",
     }
 
     emit(
