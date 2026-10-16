@@ -1,0 +1,34 @@
+{
+  "al_tube_20x1.5": {
+    "name": "Aluminum 6061-T6 Tube 20x1.5mm",
+    "material": "Aluminum 6061-T6",
+    "density_kg_m3": 2700.0,
+    "r_outer_m": 0.010,
+    "r_inner_m": 0.0085,
+    "cost_usd_per_m": 28.0
+  },
+  "al_tube_25x2": {
+    "name": "Aluminum 6061-T6 Tube 25x2.0mm",
+    "material": "Aluminum 6061-T6",
+    "density_kg_m3": 2700.0,
+    "r_outer_m": 0.0125,
+    "r_inner_m": 0.0105,
+    "cost_usd_per_m": 35.0
+  },
+  "al_tube_30x2": {
+    "name": "Aluminum 6061-T6 Tube 30x2.0mm",
+    "material": "Aluminum 6061-T6",
+    "density_kg_m3": 2700.0,
+    "r_outer_m": 0.015,
+    "r_inner_m": 0.013,
+    "cost_usd_per_m": 44.0
+  },
+  "cf_tube_25x1.5": {
+    "name": "Carbon Fiber 3K Roll-Wrapped Tube 25x1.5mm",
+    "material": "Carbon Fiber Composite",
+    "density_kg_m3": 1600.0,
+    "r_outer_m": 0.0125,
+    "r_inner_m": 0.011,
+    "cost_usd_per_m": 95.0
+  }
+}

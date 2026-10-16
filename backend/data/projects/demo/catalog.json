@@ -1,0 +1,867 @@
+{
+  "catalog_id": "demo-catalog-v1",
+  "confirmed": true,
+  "spot_check_passed": true,
+  "parts": [
+    {
+      "part_id": "XL430-W250",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 1.4,
+        "raw": "1.4 N.m (at 12.0V, 1.3A)",
+        "src": {
+          "doc": "xl430-w250.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 0.462,
+        "raw": "0.33 * 1.4 N.m (derived)",
+        "src": {
+          "doc": "xl430-w250.pdf",
+          "page": 1
+        },
+        "derived": true
+      },
+      "no_load_speed_rad_s": {
+        "value": 6.388,
+        "raw": "61 rev/min (at 12.0V)",
+        "src": {
+          "doc": "xl430-w250.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.0572,
+        "raw": "57.2 g",
+        "src": {
+          "doc": "xl430-w250.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 59.9,
+        "src": {
+          "doc": "prices.csv",
+          "row": 2
+        }
+      },
+      "dimensions_mm": [
+        28.5,
+        46.5,
+        34.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XM430-W210",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 3.0,
+        "raw": "3.0 N.m (at 12.0V, 2.3A)",
+        "src": {
+          "doc": "xm430-w210.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 0.99,
+        "raw": "0.99 N.m continuous",
+        "src": {
+          "doc": "xm430-w210.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 8.063,
+        "raw": "77 rpm (at 12.0V)",
+        "src": {
+          "doc": "xm430-w210.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.082,
+        "raw": "82.0 g",
+        "src": {
+          "doc": "xm430-w210.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 310.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 3
+        }
+      },
+      "dimensions_mm": [
+        28.5,
+        46.5,
+        34.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XM430-W350",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 4.1,
+        "raw": "4.1 N.m (at 12.0V, 2.3A)",
+        "src": {
+          "doc": "xm430-w350.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 1.35,
+        "raw": "1.35 N.m continuous",
+        "src": {
+          "doc": "xm430-w350.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 4.817,
+        "raw": "46 rpm (at 12.0V)",
+        "src": {
+          "doc": "xm430-w350.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.082,
+        "raw": "82.0 g",
+        "src": {
+          "doc": "xm430-w350.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 310.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 4
+        }
+      },
+      "dimensions_mm": [
+        28.5,
+        46.5,
+        34.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XH430-W210",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 2.5,
+        "raw": "2.5 N.m (at 12.0V, 1.3A)",
+        "src": {
+          "doc": "xh430-w210.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 0.83,
+        "raw": "0.83 N.m continuous",
+        "src": {
+          "doc": "xh430-w210.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 5.236,
+        "raw": "50 rpm (at 12.0V)",
+        "src": {
+          "doc": "xh430-w210.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.082,
+        "raw": "82.0 g",
+        "src": {
+          "doc": "xh430-w210.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 414.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 5
+        }
+      },
+      "dimensions_mm": [
+        28.5,
+        46.5,
+        34.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XH430-W350",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 3.4,
+        "raw": "3.4 N.m (at 12.0V, 1.3A)",
+        "src": {
+          "doc": "xh430-w350.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 1.12,
+        "raw": "1.12 N.m continuous",
+        "src": {
+          "doc": "xh430-w350.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 3.142,
+        "raw": "30 rpm (at 12.0V)",
+        "src": {
+          "doc": "xh430-w350.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.082,
+        "raw": "82.0 g",
+        "src": {
+          "doc": "xh430-w350.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 414.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 6
+        }
+      },
+      "dimensions_mm": [
+        28.5,
+        46.5,
+        34.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XM540-W150",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 7.3,
+        "raw": "7.3 N.m (at 12.0V, 4.4A)",
+        "src": {
+          "doc": "xm540-w150.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 2.41,
+        "raw": "2.41 N.m continuous",
+        "src": {
+          "doc": "xm540-w150.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 5.55,
+        "raw": "53 rpm (at 12.0V)",
+        "src": {
+          "doc": "xm540-w150.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.165,
+        "raw": "165.0 g",
+        "src": {
+          "doc": "xm540-w150.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 485.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 7
+        }
+      },
+      "dimensions_mm": [
+        33.5,
+        58.5,
+        44.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XM540-W270",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 10.6,
+        "raw": "10.6 N.m (at 12.0V, 4.4A)",
+        "src": {
+          "doc": "xm540-w270.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 3.5,
+        "raw": "3.50 N.m continuous",
+        "src": {
+          "doc": "xm540-w270.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 3.142,
+        "raw": "30 rpm (at 12.0V)",
+        "src": {
+          "doc": "xm540-w270.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.165,
+        "raw": "165.0 g",
+        "src": {
+          "doc": "xm540-w270.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 485.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 8
+        }
+      },
+      "dimensions_mm": [
+        33.5,
+        58.5,
+        44.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XH540-W150",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 7.1,
+        "raw": "7.1 N.m (at 12.0V, 4.9A)",
+        "src": {
+          "doc": "xh540-w150.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 2.34,
+        "raw": "2.34 N.m continuous",
+        "src": {
+          "doc": "xh540-w150.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 7.33,
+        "raw": "70 rpm (at 12.0V)",
+        "src": {
+          "doc": "xh540-w150.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.165,
+        "raw": "165.0 g",
+        "src": {
+          "doc": "xh540-w150.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 625.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 9
+        }
+      },
+      "dimensions_mm": [
+        33.5,
+        58.5,
+        44.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "XH540-W270",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-X",
+      "rated_voltage_v": 12.0,
+      "stall_torque_nm": {
+        "value": 9.9,
+        "raw": "9.9 N.m (at 12.0V, 4.9A)",
+        "src": {
+          "doc": "xh540-w270.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 3.27,
+        "raw": "3.27 N.m continuous",
+        "src": {
+          "doc": "xh540-w270.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 4.084,
+        "raw": "39 rpm (at 12.0V)",
+        "src": {
+          "doc": "xh540-w270.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.165,
+        "raw": "165.0 g",
+        "src": {
+          "doc": "xh540-w270.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 625.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 10
+        }
+      },
+      "dimensions_mm": [
+        33.5,
+        58.5,
+        44.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "PH42-020-S300-R",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-P",
+      "rated_voltage_v": 24.0,
+      "stall_torque_nm": {
+        "value": 21.5,
+        "raw": "21.5 N.m peak/stall",
+        "src": {
+          "doc": "ph42-020-s300-r.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 5.1,
+        "raw": "5.1 N.m rated continuous",
+        "src": {
+          "doc": "ph42-020-s300-r.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 3.424,
+        "raw": "32.7 rpm (at 24.0V)",
+        "src": {
+          "doc": "ph42-020-s300-r.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.34,
+        "raw": "340 g",
+        "src": {
+          "doc": "ph42-020-s300-r.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 1897.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 11
+        }
+      },
+      "dimensions_mm": [
+        42.0,
+        84.0,
+        42.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "PH54-100-S500-R",
+      "type": "actuator",
+      "vendor": "ROBOTIS",
+      "series": "DYNAMIXEL-P",
+      "rated_voltage_v": 24.0,
+      "stall_torque_nm": {
+        "value": 67.0,
+        "raw": "67.0 N.m peak/stall",
+        "src": {
+          "doc": "ph54-100-s500-r.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 25.3,
+        "raw": "25.3 N.m rated continuous",
+        "src": {
+          "doc": "ph54-100-s500-r.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 3.487,
+        "raw": "33.3 rpm (at 24.0V)",
+        "src": {
+          "doc": "ph54-100-s500-r.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.74,
+        "raw": "740 g",
+        "src": {
+          "doc": "ph54-100-s500-r.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 3289.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 12
+        }
+      },
+      "dimensions_mm": [
+        54.0,
+        108.0,
+        54.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "AK60-6",
+      "type": "actuator",
+      "vendor": "CubeMars",
+      "series": "AK-Series QDD",
+      "rated_voltage_v": 24.0,
+      "stall_torque_nm": {
+        "value": 9.0,
+        "raw": "9.0 N.m peak torque",
+        "src": {
+          "doc": "ak60-6.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 3.0,
+        "raw": "3.0 N.m rated torque",
+        "src": {
+          "doc": "ak60-6.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 33.51,
+        "raw": "320 rpm (at 24V KV80)",
+        "src": {
+          "doc": "ak60-6.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.36,
+        "raw": "360 g",
+        "src": {
+          "doc": "ak60-6.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 298.9,
+        "src": {
+          "doc": "prices.csv",
+          "row": 13
+        }
+      },
+      "dimensions_mm": [
+        68.0,
+        39.5,
+        68.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "AK70-10",
+      "type": "actuator",
+      "vendor": "CubeMars",
+      "series": "AK-Series QDD",
+      "rated_voltage_v": 24.0,
+      "stall_torque_nm": {
+        "value": 24.8,
+        "raw": "24.8 N.m peak torque",
+        "src": {
+          "doc": "ak70-10.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 8.3,
+        "raw": "8.3 N.m rated torque",
+        "src": {
+          "doc": "ak70-10.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 25.133,
+        "raw": "240 rpm (at 24V KV100)",
+        "src": {
+          "doc": "ak70-10.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.521,
+        "raw": "521 g",
+        "src": {
+          "doc": "ak70-10.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 449.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 14
+        }
+      },
+      "dimensions_mm": [
+        80.0,
+        50.0,
+        80.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "AK80-9",
+      "type": "actuator",
+      "vendor": "CubeMars",
+      "series": "AK-Series QDD",
+      "rated_voltage_v": 24.0,
+      "stall_torque_nm": {
+        "value": 22.0,
+        "raw": "22.0 N.m peak torque",
+        "src": {
+          "doc": "ak80-9.pdf",
+          "page": 1
+        }
+      },
+      "continuous_torque_nm": {
+        "value": 9.0,
+        "raw": "9.0 N.m rated torque",
+        "src": {
+          "doc": "ak80-9.pdf",
+          "page": 1
+        },
+        "derived": false
+      },
+      "no_load_speed_rad_s": {
+        "value": 40.841,
+        "raw": "390 rpm (at 24V KV100)",
+        "src": {
+          "doc": "ak80-9.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.49,
+        "raw": "490 g",
+        "src": {
+          "doc": "ak80-9.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 499.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 15
+        }
+      },
+      "dimensions_mm": [
+        88.0,
+        40.5,
+        88.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "APEX-PG20-2",
+      "type": "gearbox",
+      "vendor": "Apex Dynamics",
+      "series": "PG20 Inline Planetary",
+      "ratio": {
+        "value": 2.0,
+        "raw": "2 : 1 single-stage",
+        "src": {
+          "doc": "apex-pg20-2.pdf",
+          "page": 1
+        }
+      },
+      "efficiency": {
+        "value": 0.92,
+        "raw": "92%",
+        "src": {
+          "doc": "apex-pg20-2.pdf",
+          "page": 1
+        }
+      },
+      "rated_output_torque_nm": {
+        "value": 18.0,
+        "raw": "18.0 N.m max output",
+        "src": {
+          "doc": "apex-pg20-2.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.065,
+        "raw": "65 g",
+        "src": {
+          "doc": "apex-pg20-2.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 115.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 16
+        }
+      },
+      "dimensions_mm": [
+        28.0,
+        24.0,
+        28.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    },
+    {
+      "part_id": "APEX-PG20-3",
+      "type": "gearbox",
+      "vendor": "Apex Dynamics",
+      "series": "PG20 Inline Planetary",
+      "ratio": {
+        "value": 3.0,
+        "raw": "3 : 1 single-stage",
+        "src": {
+          "doc": "apex-pg20-3.pdf",
+          "page": 1
+        }
+      },
+      "efficiency": {
+        "value": 0.9,
+        "raw": "90%",
+        "src": {
+          "doc": "apex-pg20-3.pdf",
+          "page": 1
+        }
+      },
+      "rated_output_torque_nm": {
+        "value": 22.0,
+        "raw": "22.0 N.m max output",
+        "src": {
+          "doc": "apex-pg20-3.pdf",
+          "page": 1
+        }
+      },
+      "mass_kg": {
+        "value": 0.078,
+        "raw": "78 g",
+        "src": {
+          "doc": "apex-pg20-3.pdf",
+          "page": 1
+        }
+      },
+      "price_usd": {
+        "value": 125.0,
+        "src": {
+          "doc": "prices.csv",
+          "row": 17
+        }
+      },
+      "dimensions_mm": [
+        28.0,
+        26.0,
+        28.0
+      ],
+      "confidence": "high",
+      "user_confirmed": true
+    }
+  ]
+}

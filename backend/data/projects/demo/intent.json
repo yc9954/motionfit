@@ -1,0 +1,39 @@
+{
+  "task_summary": "Wipe a laboratory workbench surface from left to right, then lift a 400 g payload container at full horizontal extension and place it onto an elevated shelf.",
+  "active_arm": "right",
+  "phases": [
+    {
+      "name": "surface_wipe",
+      "t_start": 0.0,
+      "t_end": 2.1,
+      "description": "Horizontal sweeping motion across the lower bench surface at moderate reach.",
+      "dominant_load": "steady_gravity_and_yaw_sweep"
+    },
+    {
+      "name": "fast_extended_lift",
+      "t_start": 2.1,
+      "t_end": 3.9,
+      "description": "Rapid upward lift while arm extends forward to maximum moment arm with 0.4 kg payload.",
+      "dominant_load": "peak_shoulder_pitch_gravity_plus_inertial_torque"
+    },
+    {
+      "name": "shelf_place_and_return",
+      "t_start": 3.9,
+      "t_end": 6.0,
+      "description": "Controlled placement at upper shelf height followed by retraction to home pose.",
+      "dominant_load": "deceleration_and_holding_torque"
+    }
+  ],
+  "critical_moments": [
+    {
+      "t_s": 3.12,
+      "phase": "fast_extended_lift",
+      "reason": "Maximum horizontal moment arm (~0.61 m) combined with upward angular acceleration creates peak J2 shoulder pitch torque demand."
+    },
+    {
+      "t_s": 2.65,
+      "phase": "fast_extended_lift",
+      "reason": "Simultaneous J2 upward pitch velocity and high gravity load pushes J2 actuator along its torque-speed derating curve."
+    }
+  ]
+}

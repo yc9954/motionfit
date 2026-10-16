@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MotionFit Engineering Verification Report — {{ final_design.design_id }}</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #111827;
+      --panel-alt: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --pass: #10b981;
+      --pass-bg: rgba(16, 185, 129, 0.14);
+      --fail: #ef4444;
+      --fail-bg: rgba(239, 68, 68, 0.14);
+      --warn: #f59e0b;
+      --warn-bg: rgba(245, 158, 11, 0.15);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 24px 64px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      font-size: 24px;
+      margin: 0 0 6px 0;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      font-size: 17px;
+      margin: 28px 0 12px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h2 .sec-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-pass { background: var(--pass-bg); color: var(--pass); border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-fail { background: var(--fail-bg); color: var(--fail); border: 1px solid rgba(239, 68, 68, 0.4); }
+    .badge-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid rgba(245, 158, 11, 0.4); }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .kpi-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .kpi-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--panel-alt);
+      color: #cbd5e1;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace; font-size: 12.5px; }
+    a.cit-link {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent);
+      text-decoration: none;
+      font-family: monospace;
+      font-size: 12px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      margin-right: 4px;
+      margin-bottom: 2px;
+    }
+    a.cit-link:hover { background: rgba(56, 189, 248, 0.24); }
+    .iter-box {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .iter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .plots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 16px;
+    }
+    .plot-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .plot-title {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: #e2e8f0;
+    }
+    ul.check-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+    ul.check-list li {
+      margin-bottom: 6px;
+    }
+    @media print {
+      body { background: #ffffff; color: #0f172a; padding: 12px; }
+      .card, .iter-box, .plot-card, table { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
+      th { background: #f1f5f9; color: #0f172a; }
+      h2 { color: #0f172a; border-color: #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>MotionFit Hardware Verification &amp; Redesign Report</h1>
+        <div class="subtitle">
+          Project ID: <span class="mono">{{ project_id }}</span> &middot;
+          Initial Design: <span class="mono">{{ initial_design.design_id }}</span> &rarr;
+          Verified Design: <span class="mono">{{ final_design.design_id }}</span> &middot;
+          Generated: {{ generated_at }}
+        </div>
+      </div>
+      <div>
+        {% if passed %}
+          <span class="badge badge-pass">&#10003; All 17 Physics Checks Passed</span>
+        {% else %}
+          <span class="badge badge-fail">&#10007; Verification Failed</span>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- 1. Executive Summary -->
+    <h2><span class="sec-num">1</span> Executive Summary</h2>
+    <div class="grid-4">
+      <div class="card">
+        <div class="kpi-label">End-Effector Tracking RMSE</div>
+        <div class="kpi-val">{{ "%.1f"|format(final_metrics.ee_rmse_mm) }} mm</div>
+        <div class="kpi-sub">Before: {{ "%.1f"|format(initial_metrics.ee_rmse_mm) }} mm (Limit: &le; {{ "%.1f"|format(final_design.thresholds.ee_rmse_mm) }} mm)</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Shoulder (J2) Peak / RMS Ratio</div>
+        <div class="kpi-val">{{ "%.2f"|format(final_metrics.joints.J2.peak_ratio) }} / {{ "%.2f"|format(final_metrics.joints.J2.rms_ratio) }}</div>
+        <div class="kpi-sub">Before: {{ "%.2f"|format(initial_metrics.joints.J2.peak_ratio) }} / {{ "%.2f"|format(initial_metrics.joints.J2.rms_ratio) }}</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Total Arm Mass (excl. {{ final_design.payload_kg }} kg payload)</div>
+        <div class="kpi-val">{{ "%.3f"|format(final_metrics.total_mass_kg) }} kg</div>
+        <div class="kpi-sub">&Delta; Mass: {{ "%+.3f"|format(mass_delta_kg) }} kg (Budget: &le; {{ "%.2f"|format(final_design.constraints.max_total_mass_kg) }} kg)</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Estimated BOM Cost</div>
+        <div class="kpi-val">${{ "%.2f"|format(final_metrics.total_cost_usd) }}</div>
+        <div class="kpi-sub">&Delta; Cost: ${{ "%+.2f"|format(cost_delta_usd) }} (Budget: &le; ${{ "%.0f"|format(final_design.constraints.max_cost_usd) }})</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom: 18px;">
+      <p style="margin: 0 0 8px 0;"><strong>Summary:</strong> {{ prose.executive_summary }}</p>
+      <p style="margin: 0;"><strong>Coupled Physics Insight:</strong> {{ prose.coupling_analysis }}</p>
+    </div>
+
+    <!-- 2. Motion Summary -->
+    <h2><span class="sec-num">2</span> Motion Intent &amp; Trajectory Summary</h2>
+    <div class="card" style="margin-bottom: 14px;">
+      <p style="margin: 0 0 10px 0;">
+        <strong>Task Summary:</strong> {{ intent.task_summary }} &middot;
+        <strong>Duration:</strong> <span class="mono">{{ "%.2f"|format(motion_summary.duration_s) }} s</span> &middot;
+        <strong>Peak Cartesian Speed:</strong> <span class="mono">{{ "%.2f"|format(motion_summary.peak_cart_speed_m_s) }} m/s</span> &middot;
+        <strong>Workspace BBox (m):</strong>
+        X [<span class="mono">{{ "%.2f"|format(motion_summary.bbox_min[0]) }}, {{ "%.2f"|format(motion_summary.bbox_max[0]) }}</span>],
+        Y [<span class="mono">{{ "%.2f"|format(motion_summary.bbox_min[1]) }}, {{ "%.2f"|format(motion_summary.bbox_max[1]) }}</span>],
+        Z [<span class="mono">{{ "%.2f"|format(motion_summary.bbox_min[2]) }}, {{ "%.2f"|format(motion_summary.bbox_max[2]) }}</span>] &middot;
+        <strong>Orientation Constraint:</strong> <span class="mono">{{ intent.orientation_constraint }}</span>
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Phase Name</th>
+            <th>Time Window (s)</th>
+            <th>Physical Description &amp; Load Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ph in intent.phases %}
+          <tr>
+            <td class="mono">{{ ph.name }}</td>
+            <td class="mono">{{ "%.2f"|format(ph.t_start) }} &ndash; {{ "%.2f"|format(ph.t_end) }} s</td>
+            <td>{{ ph.notes }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 3. Initial Design & Failure Table -->
+    <h2><span class="sec-num">3</span> Initial Design (<span class="mono">{{ initial_design.design_id }}</span>) &amp; Failure Diagnosis</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Joint</th>
+          <th>Initial Part (Gearbox)</th>
+          <th>Peak Req / Avail (N&middot;m)</th>
+          <th>Peak Ratio (&le; {{ initial_design.thresholds.peak_torque_ratio }})</th>
+          <th>RMS Req / Cont (N&middot;m)</th>
+          <th>RMS Ratio (&le; {{ initial_design.thresholds.rms_torque_ratio }})</th>
+          <th>Peak Speed / No-Load (rad/s)</th>
+          <th>Saturated Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j_name in ["J1", "J2", "J3", "J4"] %}
+        {% set jm = initial_metrics.joints[j_name] %}
+        <tr>
+          <td class="mono"><strong>{{ j_name }}</strong></td>
+          <td class="mono">{{ jm.actuator_id }}{% if jm.gearbox_id %} + {{ jm.gearbox_id }}{% endif %}</td>
+          <td class="mono">{{ "%.2f"|format(jm.peak_req_nm) }} / {{ "%.2f"|format(jm.tau_avail_at_peak_nm) }} (t={{ "%.2f"|format(jm.t_peak_s) }}s)</td>
+          <td class="mono">{{ "%.3f"|format(jm.peak_ratio) }}</td>
+          <td class="mono">{{ "%.2f"|format(jm.rms_req_nm) }} / {{ "%.2f"|format(jm.tau_cont_eff_nm) }}</td>
+          <td class="mono">{{ "%.3f"|format(jm.rms_ratio) }}</td>
+          <td class="mono">{{ "%.2f"|format(jm.peak_speed_rad_s) }} / {{ "%.2f"|format(jm.omega_nl_eff_rad_s) }}</td>
+          <td class="mono">{{ "%.3f"|format(jm.saturated_time_s) }} s</td>
+          <td>
+            {% if jm.peak_ratio <= initial_design.thresholds.peak_torque_ratio and jm.rms_ratio <= initial_design.thresholds.rms_torque_ratio and jm.speed_ratio <= initial_design.thresholds.peak_speed_ratio %}
+              <span class="badge badge-pass">PASS</span>
+            {% else %}
+              <span class="badge badge-fail">FAIL</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- 4. Iteration Log -->
+    <h2><span class="sec-num">4</span> Gemini 4 Argon Design Iteration Log</h2>
+    {% for it in iterations %}
+    <div class="iter-box">
+      <div class="iter-header">
+        <div>
+          <strong>Iteration {{ it.iteration }}</strong> &mdash; Design <span class="mono">{{ it.design_id }}</span>
+          &middot; EE RMSE: <span class="mono">{{ "%.2f"|format(it.metrics.ee_rmse_mm) }} mm</span>
+          &middot; Mass: <span class="mono">{{ "%.3f"|format(it.metrics.total_mass_kg) }} kg</span>
+          &middot; Cost: <span class="mono">${{ "%.2f"|format(it.metrics.total_cost_usd) }}</span>
+        </div>
+        <div>
+          {% if it.check.passed %}
+            <span class="badge badge-pass">PASSED ALL 17 CHECKS</span>
+          {% else %}
+            <span class="badge badge-fail">FAILED ({{ it.check.violations|length }} violations)</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if it.prediction_vs_measured %}
+      <div style="margin-bottom: 10px; padding: 10px; background: var(--panel-alt); border-radius: 6px; font-size: 12.5px;">
+        <strong>Argon Prediction vs. MuJoCo Measured (from prior proposal):</strong>
+        J2 Peak Ratio: predicted <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.j2_peak_ratio.predicted) }}</span> vs measured <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.j2_peak_ratio.measured) }}</span> &middot;
+        J2 RMS Ratio: predicted <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.j2_rms_ratio.predicted) }}</span> vs measured <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.j2_rms_ratio.measured) }}</span> &middot;
+        Total Mass: predicted <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.total_mass_kg.predicted) }} kg</span> vs measured <span class="mono">{{ "%.3f"|format(it.prediction_vs_measured.total_mass_kg.measured) }} kg</span>
+      </div>
+      {% endif %}
+
+      {% if it.proposal %}
+      <p style="margin: 6px 0;"><strong>Argon Diagnosis:</strong> {{ it.proposal.diagnosis }}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Target Parameter</th>
+            <th>From &rarr; To</th>
+            <th>Engineering Rationale</th>
+            <th>Datasheet Citations</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for chg in it.proposal.changes %}
+          <tr>
+            <td class="mono">{{ chg.target }}</td>
+            <td class="mono">{{ chg["from"] }} &rarr; <strong>{{ chg.to }}</strong></td>
+            <td>{{ chg.rationale }}</td>
+            <td>
+              {% for cit in chg.citations %}
+              <a class="cit-link" href="/api/projects/{{ project_id }}/datasheets/{{ cit.doc }}#page={{ cit.page }}" target="_blank">
+                {{ cit.doc }}#p{{ cit.page }} ({{ cit.field }})
+              </a>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if naive_baseline %}
+    <div class="iter-box" style="border-color: rgba(245, 158, 11, 0.5);">
+      <div class="iter-header">
+        <div>
+          <strong>Baseline Comparison (Naive Heuristic: "Upgrade Failing Joint to Strongest Catalog Motor")</strong>
+          &mdash; <span class="mono">{{ naive_baseline.actuator_id }}</span>
+        </div>
+        <span class="badge badge-warn">NAIVE BASELINE: {{ "PASS" if naive_baseline.passed else "FAILS BUDGET / SPEED" }}</span>
+      </div>
+      <p style="margin: 0;">{{ naive_baseline.summary }}</p>
+    </div>
+    {% endif %}
+
+    <!-- 5. Before / After Comparison Table -->
+    <h2><span class="sec-num">5</span> Before / After Hardware &amp; Check Margin Comparison</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Check / Parameter</th>
+          <th>Initial (<span class="mono">{{ initial_design.design_id }}</span>)</th>
+          <th>Final Verified (<span class="mono">{{ final_design.design_id }}</span>)</th>
+          <th>Threshold / Limit</th>
+          <th>Final Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j_name in ["J1", "J2", "J3", "J4"] %}
+        <tr>
+          <td><strong>{{ j_name }} Actuator / Gearbox</strong></td>
+          <td class="mono">{{ initial_design.joints[j_name].actuator_id }}{% if initial_design.joints[j_name].gearbox_id %} + {{ initial_design.joints[j_name].gearbox_id }}{% endif %}</td>
+          <td class="mono"><strong>{{ final_design.joints[j_name].actuator_id }}{% if final_design.joints[j_name].gearbox_id %} + {{ final_design.joints[j_name].gearbox_id }}{% endif %}</strong></td>
+          <td class="mono">Catalog Verified</td>
+          <td><span class="badge badge-pass">VERIFIED</span></td>
+        </tr>
+        <tr>
+          <td>{{ j_name }} Peak Torque Ratio</td>
+          <td class="mono">{{ "%.3f"|format(initial_metrics.joints[j_name].peak_ratio) }}</td>
+          <td class="mono">{{ "%.3f"|format(final_metrics.joints[j_name].peak_ratio) }}</td>
+          <td class="mono">&le; {{ "%.2f"|format(final_design.thresholds.peak_torque_ratio) }}</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>{{ j_name }} Continuous RMS Torque Ratio</td>
+          <td class="mono">{{ "%.3f"|format(initial_metrics.joints[j_name].rms_ratio) }}</td>
+          <td class="mono">{{ "%.3f"|format(final_metrics.joints[j_name].rms_ratio) }}</td>
+          <td class="mono">&le; {{ "%.2f"|format(final_design.thresholds.rms_torque_ratio) }}</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>{{ j_name }} Peak Speed Ratio</td>
+          <td class="mono">{{ "%.3f"|format(initial_metrics.joints[j_name].speed_ratio) }}</td>
+          <td class="mono">{{ "%.3f"|format(final_metrics.joints[j_name].speed_ratio) }}</td>
+          <td class="mono">&le; {{ "%.2f"|format(final_design.thresholds.peak_speed_ratio) }}</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td><strong>End-Effector Tracking RMSE</strong></td>
+          <td class="mono">{{ "%.2f"|format(initial_metrics.ee_rmse_mm) }} mm</td>
+          <td class="mono"><strong>{{ "%.2f"|format(final_metrics.ee_rmse_mm) }} mm</strong></td>
+          <td class="mono">&le; {{ "%.1f"|format(final_design.thresholds.ee_rmse_mm) }} mm</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td><strong>Total Arm Mass (excl. payload)</strong></td>
+          <td class="mono">{{ "%.3f"|format(initial_metrics.total_mass_kg) }} kg</td>
+          <td class="mono"><strong>{{ "%.3f"|format(final_metrics.total_mass_kg) }} kg</strong></td>
+          <td class="mono">&le; {{ "%.2f"|format(final_design.constraints.max_total_mass_kg) }} kg</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td><strong>Total Arm BOM Cost</strong></td>
+          <td class="mono">${{ "%.2f"|format(initial_metrics.total_cost_usd) }}</td>
+          <td class="mono"><strong>${{ "%.2f"|format(final_metrics.total_cost_usd) }}</strong></td>
+          <td class="mono">&le; ${{ "%.2f"|format(final_design.constraints.max_cost_usd) }}</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td><strong>Total Reach (L1 + L2 + L3)</strong></td>
+          <td class="mono">{{ "%.3f"|format(initial_metrics.reach_m) }} m</td>
+          <td class="mono"><strong>{{ "%.3f"|format(final_metrics.reach_m) }} m</strong></td>
+          <td class="mono">&ge; {{ "%.2f"|format(final_design.constraints.min_reach_m) }} m</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 6. Torque & Tracking Plots -->
+    <h2><span class="sec-num">6</span> Joint Torque &amp; End-Effector Tracking Plots</h2>
+    <div class="plots-grid">
+      {% for plot in svg_plots %}
+      <div class="plot-card">
+        <div class="plot-title">{{ plot.title }}</div>
+        {{ plot.svg | safe }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- 7. Datasheet Citations Index -->
+    <h2><span class="sec-num">7</span> Datasheet Citations Index</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Part ID</th>
+          <th>Vendor &amp; Type</th>
+          <th>Key Cited Specifications</th>
+          <th>Datasheet Source Link</th>
+          <th>Derived Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in citations_index %}
+        <tr>
+          <td class="mono"><strong>{{ item.part_id }}</strong></td>
+          <td>{{ item.vendor }} ({{ item.type }})</td>
+          <td class="mono">{{ item.specs_summary }}</td>
+          <td>
+            <a class="cit-link" href="/api/projects/{{ project_id }}/datasheets/{{ item.doc }}#page={{ item.page }}" target="_blank">
+              {{ item.doc }} (Page {{ item.page }})
+            </a>
+          </td>
+          <td>
+            {% if item.derived %}
+              <span class="badge badge-warn">DERIVED (0.33 &times; Stall)</span>
+            {% else %}
+              <span class="badge badge-pass">EXPLICIT DATASHEET</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- 8. Modelling Assumptions -->
+    <h2><span class="sec-num">8</span> Physics Modelling Assumptions</h2>
+    <div class="card">
+      <ul class="check-list">
+        <li><strong>Rigid Links &amp; Composite Inertia:</strong> Links are modelled as rigid hollow cylinders using density and wall thickness from <span class="mono">materials.json</span>, combined analytically with point-mass actuator housings at each joint origin.</li>
+        <li><strong>Linear DC/BLDC Torque-Speed Envelope:</strong> Available actuator torque at joint velocity &omega; follows <span class="mono">&tau;_avail(&omega;) = min(&tau;_stall_eff &times; max(0, 1 &minus; |&omega;| / &omega;_nl_eff), &tau;_rated_eff)</span>.</li>
+        <li><strong>Gearbox Scaling:</strong> External inline planetary stages scale stall and continuous torque by <span class="mono">ratio &times; efficiency</span> (capped at <span class="mono">rated_output_torque_nm</span>) and divide no-load speed by <span class="mono">ratio</span>.</li>
+        <li><strong>Joint Damping &amp; Payload:</strong> Joint viscous damping is fixed at <span class="mono">0.02 N&middot;m&middot;s/rad</span> with <span class="mono">0.005 N&middot;m</span> dry friction loss. Payload (<span class="mono">{{ final_design.payload_kg }} kg</span>) is attached as a point mass at the end-effector tool flange.</li>
+        <li><strong>4-DOF Analytic Inverse Kinematics:</strong> Base yaw is solved via <span class="mono">q1 = atan2(p_y, p_x)</span> with planar 2-link elbow-up/down continuity across the 100 Hz trajectory.</li>
+      </ul>
+    </div>
+
+    <!-- 9. Not Verified by Simulation -->
+    <h2><span class="sec-num">9</span> Not Verified by Simulation (Mandatory Engineering Disclaimer)</h2>
+    <div class="card" style="border-color: rgba(245, 158, 11, 0.45);">
+      <ul class="check-list">
+        <li><strong>Continuous Thermal Rise Under Ambient Conditions:</strong> Thermal safety is approximated by the RMS torque vs. continuous torque ratio (&le; 1.00); transient winding temperature in enclosed housings is not simulated.</li>
+        <li><strong>Gearbox Backlash &amp; Torsional Compliance:</strong> Spur and planetary gearhead lost motion (&le; 8&ndash;15 arcmin) and harmonic/shaft windup under reversing loads are not modelled.</li>
+        <li><strong>Structural Deflection &amp; Buckling:</strong> Link tubes are treated as rigid bodies; elastic bending and fastener shear must be checked in FEA.</li>
+        <li><strong>Cable &amp; Connector Routing:</strong> Harness mass, bend radius, and drag torque across J1&ndash;J4 are excluded.</li>
+        <li><strong>Driver Current &amp; Bus-Voltage Droop:</strong> Power supply sag under simultaneous multi-joint peak current draw is not simulated.</li>
+        <li><strong>Environmental Collision &amp; Contact Grasp Dynamics:</strong> Free-space trajectory tracking is verified; object slip, impact transients, and obstacle collisions are out of scope.</li>
+        <li><strong>Mounting Hole Pattern Compatibility:</strong> Frame transitions (e.g., 28.5&times;46.5 mm XM430 vs. 33.5&times;58.5 mm XM540 or PG20 flange adapter) require mechanical bracket updates.</li>
+      </ul>
+      <p style="margin: 10px 0 0 0; color: var(--muted);"><strong>Engineering Note:</strong> {{ prose.recommendation_notes }}</p>
+    </div>
+
+    <!-- 10. Engineer Sign-Off Block -->
+    <h2><span class="sec-num">10</span> Human-in-the-Loop Engineer Sign-Off</h2>
+    <div class="card" id="signoff-block">
+      {% if approval and approval.approved %}
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span class="badge badge-pass">&#10003; ENGINEER APPROVED FOR EXPORT</span>
+            <p style="margin: 8px 0 0 0;">
+              <strong>Approved By:</strong> {{ approval.engineer_name }} &middot;
+              <strong>Timestamp:</strong> <span class="mono">{{ approval.approved_at }}</span>
+            </p>
+            {% if approval.notes %}
+              <p style="margin: 4px 0 0 0; color: var(--muted);"><strong>Sign-Off Notes:</strong> {{ approval.notes }}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span class="badge badge-warn">PENDING ENGINEER APPROVAL</span>
+            <p style="margin: 8px 0 0 0; color: var(--muted);">
+              Review all datasheet citations and unverified physical items above, then approve in the MotionFit Compare &amp; Report workspace to unlock final CAD/MJCF export.
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

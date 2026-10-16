@@ -1,0 +1,35 @@
+<mujoco model="motionfit_{{ design_id }}">
+  <compiler angle="radian"/>
+  <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body name="base" pos="0 0 0">
+      <inertial pos="0 0 {{ base_h / 2.0 }}" mass="{{ m_base }}" diaginertia="1e-3 1e-3 1e-3"/>
+      <joint name="J1" type="hinge" axis="0 0 1" range="-2.97 2.97" damping="0.05" frictionloss="0.005"/>
+      <geom name="g_base" type="cylinder" fromto="0 0 0 0 0 {{ base_h }}" size="{{ r_o * 1.4 }}" contype="0" conaffinity="0"/>
+      <body name="shoulder" pos="0 0 {{ base_h }}">
+        <inertial pos="{{ com_shoulder_x }} 0 0" mass="{{ m_shoulder_total }}" diaginertia="{{ I_shoulder_x }} {{ I_shoulder_y }} {{ I_shoulder_z }}"/>
+        <joint name="J2" type="hinge" axis="0 -1 0" range="-0.52 2.62" damping="0.05" frictionloss="0.005"/>
+        <geom name="g_link1" type="capsule" fromto="0 0 0 {{ L1 }} 0 0" size="{{ r_o }}" contype="0" conaffinity="0"/>
+        <body name="elbow" pos="{{ L1 }} 0 0">
+          <inertial pos="{{ com_elbow_x }} 0 0" mass="{{ m_elbow_total }}" diaginertia="{{ I_elbow_x }} {{ I_elbow_y }} {{ I_elbow_z }}"/>
+          <joint name="J3" type="hinge" axis="0 -1 0" range="-2.62 2.62" damping="0.05" frictionloss="0.005"/>
+          <geom name="g_link2" type="capsule" fromto="0 0 0 {{ L2 }} 0 0" size="{{ r_o }}" contype="0" conaffinity="0"/>
+          <body name="wrist" pos="{{ L2 }} 0 0">
+            <inertial pos="{{ com_wrist_x }} 0 0" mass="{{ m_wrist_total }}" diaginertia="{{ I_wrist_x }} {{ I_wrist_y }} {{ I_wrist_z }}"/>
+            <joint name="J4" type="hinge" axis="0 -1 0" range="-2.09 2.09" damping="0.05" frictionloss="0.005"/>
+            <geom name="g_link3" type="capsule" fromto="0 0 0 {{ L3 }} 0 0" size="0.012" contype="0" conaffinity="0"/>
+            <body name="tool" pos="{{ L3 }} 0 0">
+              <inertial pos="0 0 0" mass="{{ payload }}" diaginertia="1e-5 1e-5 1e-5"/>
+              <site name="ee" pos="0 0 0" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    {% for j in joints %}
+    <motor name="m_{{ j.name }}" joint="{{ j.name }}" gear="1" ctrllimited="true" ctrlrange="-{{ j.tau_s }} {{ j.tau_s }}"/>
+    {% endfor %}
+  </actuator>
+</mujoco>
