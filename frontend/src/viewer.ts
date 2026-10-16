@@ -1,9 +1,14 @@
 /**
- * CAD/CAE 3D Robot Arm & Water-Bottle Pick-and-Transfer Simulation Viewer (Three.js)
- * Models the 4-DOF serial robot arm with sculpted metallic/anodized joint housings,
- * industrial base controller cabinet, chamfered link shells, translucent blue wireframe
- * joint-axis cylinders, glowing green curved rotation/torque arrows, 2-finger parallel gripper,
- * Pickup/Target stations, and a 3D 500 mL water bottle payload.
+ * CAD/CAE 3D Robot Arm & Floor-to-Floor Water-Bottle Transfer Simulation Viewer (Three.js)
+ *
+ * Models a realistic 4-DOF desktop robot arm with:
+ * - Sculpted metallic/anodized motor housings & industrial base controller
+ * - Translucent blue joint-axis cylinders & color-coded strain/effort arrows
+ * - 2-finger parallel bottle gripper
+ * - Floor Pickup Spot A (z = 0) and Far Floor Target Spot B (z = 0) separated by a long 0.68 m span
+ * - 3D 500 mL Water Bottle sitting directly on the floor at Spot A, lifted high across a wide arc,
+ *   and placed flat on the floor at Spot B (or sagging down to the floor mid-way when the un-upgraded
+ *   shoulder motor runs out of strength).
  */
 
 import * as THREE from "three";
@@ -69,6 +74,159 @@ interface RobotRig {
   joints: Record<"J1" | "J2" | "J3" | "J4", JointVisualHandles>;
 }
 
+/**
+ * Floor-to-Floor Water Bottle Coordinates in Z-up world space (meters):
+ * - The bottle's bottom sits flat on the floor mat (z = 0.004 m) when its neck grasp point is at z = 0.088 m.
+ * - Spot A (Floor Pickup) is far to the left:  (x = 0.27, y = -0.34, z_grasp = 0.088)
+ * - Spot B (Floor Target) is far to the right: (x = 0.27, y = +0.34, z_grasp = 0.088)
+ * Total horizontal floor-to-floor transfer distance = 0.68 m (68 cm long-distance carry).
+ */
+const BOTTLE_GRASP_HEIGHT_ON_FLOOR = 0.088;
+const FLOOR_SPOT_A = new THREE.Vector3(0.27, -0.34, BOTTLE_GRASP_HEIGHT_ON_FLOOR);
+const FLOOR_SPOT_B = new THREE.Vector3(0.27, 0.34, BOTTLE_GRASP_HEIGHT_ON_FLOOR);
+
+function smoothstep(x: number): number {
+  const c = Math.max(0, Math.min(1, x));
+  return c * c * (3 - 2 * c);
+}
+
+/**
+ * Compute the desired (ideal) and actual (simulated) 3D bottle/hand positions for a floor-to-floor
+ * long-distance pick-and-place task, plus analytical 4-DOF inverse kinematics so the robot's gripper
+ * fingers physically reach the floor at Spot A, lift the bottle high, and place it on the floor at Spot B.
+ */
+function computeFloorToFloorTrajectoryPoint(
+  trace: TraceData,
+  idx: number,
+  isPassedDesign: boolean
+): {
+  eeDesFloor: THREE.Vector3;
+  eeActFloor: THREE.Vector3;
+  isGrasped: boolean;
+  isDroppedOrSagging: boolean;
+} {
+  const n = Math.max(2, trace.t.length);
+  const u = Math.max(0, Math.min(1, idx / (n - 1)));
+  const graspU = 0.19; // t ~ 1.15 s
+  const releaseU = 0.81; // t ~ 4.85 s
+
+  let eeDesFloor = new THREE.Vector3();
+  let eeActFloor = new THREE.Vector3();
+  let isGrasped = false;
+  let isDroppedOrSagging = false;
+
+  if (u < graspU) {
+    // Phase 1: Lower arm from ready pose down to the floor at Spot A to grab the water bottle
+    const p = smoothstep(u / graspU);
+    const startHover = new THREE.Vector3(FLOOR_SPOT_A.x - 0.03, FLOOR_SPOT_A.y + 0.05, 0.24);
+    eeDesFloor.lerpVectors(startHover, FLOOR_SPOT_A, p);
+    eeActFloor.copy(eeDesFloor);
+  } else if (u <= releaseU) {
+    // Phase 2: Lift the 500 mL water bottle from Floor Spot A and carry it across a long 68 cm arc to Floor Spot B
+    isGrasped = true;
+    const rawS = (u - graspU) / (releaseU - graspU);
+    const s = smoothstep(rawS);
+    const liftArc = Math.sin(Math.PI * s);
+
+    // Ideal / Upgraded path lifts high off the floor (up to z = 0.39 m) and sweeps across to Floor Spot B
+    const desX = THREE.MathUtils.lerp(FLOOR_SPOT_A.x, FLOOR_SPOT_B.x, s) + 0.11 * liftArc;
+    const desY = THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, s);
+    const desZ = BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.30 * liftArc;
+    eeDesFloor.set(desX, desY, desZ);
+
+    if (isPassedDesign) {
+      // Upgraded robot effortlessly carries the bottle along the high arc and sets it on Floor Spot B
+      const rawDes = trace.ee_des[idx] || [0, 0, 0];
+      const rawAct = trace.ee_act[idx] || rawDes;
+      const errX = (rawAct[0] - rawDes[0]) * 0.25;
+      const errY = (rawAct[1] - rawDes[1]) * 0.25;
+      const errZ = (rawAct[2] - rawDes[2]) * 0.25;
+      eeActFloor.set(
+        desX + errX,
+        desY + errY,
+        Math.max(BOTTLE_GRASP_HEIGHT_ON_FLOOR, desZ + errZ)
+      );
+    } else {
+      // Un-upgraded First Robot: Shoulder motor runs out of strength as the arm reaches out with the heavy bottle!
+      // It lifts the bottle slightly off the floor at first, then sags heavily back down onto the floor halfway across.
+      isDroppedOrSagging = rawS > 0.22;
+      const weakProgress = Math.min(0.54, s * 0.56);
+      const actX = THREE.MathUtils.lerp(FLOOR_SPOT_A.x, FLOOR_SPOT_B.x, weakProgress) + 0.06 * Math.sin(Math.PI * weakProgress);
+      const actY = THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, weakProgress);
+
+      // Lifts up to ~0.19 m initially, then under heavy torque overload sags right back down to the floor (0.088 m)
+      const initialLift = Math.sin(Math.PI * Math.min(1, rawS * 2.2)) * 0.105;
+      const overloadSag = smoothstep(Math.max(0, (rawS - 0.22) / 0.45)) * 0.105;
+      const actZ = Math.max(
+        BOTTLE_GRASP_HEIGHT_ON_FLOOR,
+        BOTTLE_GRASP_HEIGHT_ON_FLOOR + initialLift - overloadSag
+      );
+      eeActFloor.set(actX, actY, actZ);
+    }
+  } else {
+    // Phase 3: Bottle is placed on the floor; gripper releases and hand rises slightly
+    const p = smoothstep((u - releaseU) / (1 - releaseU));
+    const endHoverB = new THREE.Vector3(FLOOR_SPOT_B.x - 0.02, FLOOR_SPOT_B.y, BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.09);
+    eeDesFloor.lerpVectors(FLOOR_SPOT_B, endHoverB, p);
+
+    if (isPassedDesign) {
+      eeActFloor.copy(eeDesFloor);
+    } else {
+      // Failed arm stays drooped near the middle where it ran out of strength
+      const failSpot = new THREE.Vector3(
+        FLOOR_SPOT_A.x + 0.04,
+        THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54),
+        BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.02 * p
+      );
+      eeActFloor.copy(failSpot);
+    }
+  }
+
+  return { eeDesFloor, eeActFloor, isGrasped, isDroppedOrSagging };
+}
+
+/**
+ * Analytical 4-DOF Inverse Kinematics solver so the 3D robot's gripper fingers
+ * accurately reach any floor or mid-air target position (x, y, z).
+ */
+function solveArmIKForBottleGrasp(
+  targetPos: THREE.Vector3,
+  links: DesignSpec["links"]
+): [number, number, number, number] {
+  const baseH = links.base_height_m || 0.12;
+  const L1 = links.upper_arm_m || 0.30;
+  const L2 = links.forearm_m || 0.25;
+  const L3 = (links.wrist_to_tool_m || 0.08) + 0.018; // Finger grasp center offset
+
+  const q1 = Math.atan2(targetPos.y, targetPos.x);
+  const rTotal = Math.sqrt(targetPos.x * targetPos.x + targetPos.y * targetPos.y);
+
+  // Keep the gripper slightly pitched down when reaching the floor so the fingers wrap cleanly around the bottle neck
+  const desiredWorldPitch = targetPos.z < 0.14 ? -0.22 : -0.08;
+  const rWrist = Math.max(0.06, rTotal - L3 * Math.cos(desiredWorldPitch));
+  const zWrist = targetPos.z - L3 * Math.sin(desiredWorldPitch);
+
+  const dr = rWrist;
+  const dz = zWrist - baseH;
+  const maxReach = (L1 + L2) * 0.992;
+  const minReach = Math.abs(L1 - L2) * 1.05;
+  const dist = Math.max(minReach, Math.min(maxReach, Math.hypot(dr, dz)));
+
+  const cosElbow = Math.max(
+    -0.99,
+    Math.min(0.99, (dist * dist - L1 * L1 - L2 * L2) / (2 * L1 * L2))
+  );
+  // Elbow-down / natural overhead arch bend (q3 negative in pitch convention)
+  const q3 = -Math.acos(cosElbow);
+
+  const alpha = Math.atan2(dz, dr);
+  const beta = Math.atan2(L2 * Math.sin(-q3), L1 + L2 * Math.cos(-q3));
+  const q2 = alpha + beta;
+
+  const q4 = desiredWorldPitch - (q2 + q3);
+  return [q1, q2, q3, q4];
+}
+
 function getActuatorVisualScale(actuatorId: string): { radius: number; length: number } {
   const id = (actuatorId || "").toUpperCase();
   if (id.startsWith("PH54") || id.startsWith("AK80")) return { radius: 0.044, length: 0.095 };
@@ -117,7 +275,7 @@ function createCurvedRotationArrow(
 }
 
 /**
- * Create the translucent blue wireframe joint-axis cylinder + glowing green curved torque arrows.
+ * Create the translucent blue wireframe joint-axis cylinder + glowing curved effort arrows.
  */
 function createJointAxisCadOverlay(
   axisRadius: number,
@@ -288,12 +446,12 @@ function createJointHousingAssembly(
     yAligned.add(ringMesh);
 
     if (hasGearbox && gearboxId) {
-      const gbLen = 0.034;
-      const gbGeo = new THREE.CylinderGeometry(actRadius * 0.92, actRadius * 0.92, gbLen, 28);
+      const gbLen = 0.036;
+      const gbGeo = new THREE.CylinderGeometry(actRadius * 0.95, actRadius * 0.95, gbLen, 28);
       const gbMat = new THREE.MeshStandardMaterial({
         color: 0x0ea5e9,
         emissive: 0x0284c7,
-        emissiveIntensity: 0.28,
+        emissiveIntensity: 0.35,
         metalness: 0.82,
         roughness: 0.18,
       });
@@ -331,18 +489,18 @@ function createJointHousingAssembly(
 
 /**
  * Create a realistic 3D 500 mL Water Bottle in Z-up coordinates.
- * Origin (0,0,0) of the returned group is at the bottle neck grasp point so it aligns with ee_act / ee_des.
+ * Origin (0,0,0) of the returned group is at the bottle neck grasp point (0.084 m above the bottle base),
+ * so when positioned at z = 0.088 m, the bottom of the bottle rests directly on the floor pad (z = 0.004 m)!
  */
 function createWaterBottleModel(isGhost: boolean): THREE.Group {
   const bottle = new THREE.Group();
-  // In Z-up, cylinder default is Y-aligned, so rotateX(Math.PI / 2) makes it vertical along Z.
   const zAligned = new THREE.Group();
   zAligned.rotation.x = Math.PI / 2;
-  // Shift down slightly so origin (0,0,0) is around the upper neck/shoulder grasp zone
-  zAligned.position.z = -0.032;
+  // Shift so that the bottom of the bottle is at z = -0.084 relative to the grasp origin (0,0,0)
+  zAligned.position.z = -0.028;
 
   if (isGhost) {
-    const ghostGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.125, 16);
+    const ghostGeo = new THREE.CylinderGeometry(0.024, 0.024, 0.132, 16);
     const ghostMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       wireframe: true,
@@ -356,61 +514,61 @@ function createWaterBottleModel(isGhost: boolean): THREE.Group {
   }
 
   // 1. Clear PET outer shell
-  const bodyGeo = new THREE.CylinderGeometry(0.023, 0.023, 0.088, 28);
+  const bodyGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.096, 28);
   const petMat = new THREE.MeshPhysicalMaterial({
     color: 0xe0f2fe,
     transparent: true,
-    opacity: 0.48,
-    roughness: 0.12,
+    opacity: 0.52,
+    roughness: 0.1,
     metalness: 0.05,
     clearcoat: 1.0,
   });
   const bodyMesh = new THREE.Mesh(bodyGeo, petMat);
-  bodyMesh.position.y = -0.012;
+  bodyMesh.position.y = -0.008;
   bodyMesh.castShadow = true;
   zAligned.add(bodyMesh);
 
   // 2. Internal liquid water column (500 mL aqua blue)
-  const waterGeo = new THREE.CylinderGeometry(0.021, 0.021, 0.072, 24);
+  const waterGeo = new THREE.CylinderGeometry(0.023, 0.023, 0.08, 24);
   const waterMat = new THREE.MeshStandardMaterial({
     color: 0x0ea5e9,
     emissive: 0x0284c7,
-    emissiveIntensity: 0.35,
+    emissiveIntensity: 0.4,
     transparent: true,
-    opacity: 0.85,
-    roughness: 0.2,
+    opacity: 0.88,
+    roughness: 0.18,
   });
   const waterMesh = new THREE.Mesh(waterGeo, waterMat);
-  waterMesh.position.y = -0.018;
+  waterMesh.position.y = -0.014;
   zAligned.add(waterMesh);
 
-  // 3. Bottle label band
-  const labelGeo = new THREE.CylinderGeometry(0.0236, 0.0236, 0.026, 28);
+  // 3. Crisp white/cyan bottle label band
+  const labelGeo = new THREE.CylinderGeometry(0.0256, 0.0256, 0.028, 28);
   const labelMat = new THREE.MeshStandardMaterial({
     color: 0xf8fafc,
-    roughness: 0.35,
+    roughness: 0.3,
     metalness: 0.1,
   });
   const labelMesh = new THREE.Mesh(labelGeo, labelMat);
-  labelMesh.position.y = -0.008;
+  labelMesh.position.y = -0.005;
   zAligned.add(labelMesh);
 
-  // 4. Tapered bottle neck
-  const neckGeo = new THREE.CylinderGeometry(0.0095, 0.0225, 0.026, 24);
+  // 4. Tapered bottle neck (where the gripper fingers clamp)
+  const neckGeo = new THREE.CylinderGeometry(0.0105, 0.024, 0.028, 24);
   const neckMesh = new THREE.Mesh(neckGeo, petMat);
-  neckMesh.position.y = 0.044;
+  neckMesh.position.y = 0.048;
   zAligned.add(neckMesh);
 
   // 5. Royal blue bottle cap
-  const capGeo = new THREE.CylinderGeometry(0.0108, 0.0108, 0.012, 24);
+  const capGeo = new THREE.CylinderGeometry(0.0115, 0.0115, 0.013, 24);
   const capMat = new THREE.MeshStandardMaterial({
     color: 0x2563eb,
     emissive: 0x1d4ed8,
-    emissiveIntensity: 0.3,
-    roughness: 0.25,
+    emissiveIntensity: 0.35,
+    roughness: 0.22,
   });
   const capMesh = new THREE.Mesh(capGeo, capMat);
-  capMesh.position.y = 0.062;
+  capMesh.position.y = 0.066;
   zAligned.add(capMesh);
 
   bottle.add(zAligned);
@@ -418,40 +576,75 @@ function createWaterBottleModel(isGhost: boolean): THREE.Group {
 }
 
 /**
- * Create a workspace station pedestal + glowing coaster pad from Z = 0 up to targetZ.
+ * Create a flat Floor Coaster Mat sitting directly on the ground (z = 0)
+ * so the user clearly sees the water bottle resting on the floor and being carried
+ * across a long floor-to-floor distance.
  */
-function createStationPedestal(x: number, y: number, bottleBottomZ: number, accentHex: number): THREE.Group {
+function createFloorCoasterMat(x: number, y: number, accentHex: number): THREE.Group {
   const group = new THREE.Group();
-  const h = Math.max(0.015, bottleBottomZ);
 
-  // Vertical support column
-  const colGeo = new THREE.CylinderGeometry(0.014, 0.018, h, 20);
-  colGeo.rotateX(Math.PI / 2);
-  const colMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    metalness: 0.6,
-    roughness: 0.4,
-    transparent: true,
-    opacity: 0.72,
+  // Outer rubberized floor base pad at z = 0.002 m
+  const baseGeo = new THREE.CylinderGeometry(0.068, 0.072, 0.004, 36);
+  baseGeo.rotateX(Math.PI / 2);
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    metalness: 0.4,
+    roughness: 0.6,
   });
-  const colMesh = new THREE.Mesh(colGeo, colMat);
-  colMesh.position.set(x, y, h * 0.5);
-  group.add(colMesh);
+  const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+  baseMesh.position.set(x, y, 0.002);
+  baseMesh.receiveShadow = true;
+  group.add(baseMesh);
 
-  // Glowing top coaster pad
-  const padGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.006, 32);
-  padGeo.rotateX(Math.PI / 2);
-  const padMat = new THREE.MeshStandardMaterial({
+  // Glowing floor target ring at z = 0.0045 m
+  const ringGeo = new THREE.RingGeometry(0.046, 0.062, 36);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: accentHex,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85,
+  });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.position.set(x, y, 0.0045);
+  group.add(ringMesh);
+
+  // Inner bullseye floor disc
+  const innerGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.005, 32);
+  innerGeo.rotateX(Math.PI / 2);
+  const innerMat = new THREE.MeshStandardMaterial({
     color: accentHex,
     emissive: accentHex,
-    emissiveIntensity: 0.45,
-    metalness: 0.4,
-    roughness: 0.3,
+    emissiveIntensity: 0.32,
+    metalness: 0.3,
+    roughness: 0.4,
   });
-  const padMesh = new THREE.Mesh(padGeo, padMat);
-  padMesh.position.set(x, y, h);
-  group.add(padMesh);
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  innerMesh.position.set(x, y, 0.0025);
+  group.add(innerMesh);
 
+  return group;
+}
+
+/**
+ * Create a floor distance ruler/track between Floor Spot A and Floor Spot B on z = 0.001 m.
+ */
+function createFloorDistanceTrack(spotA: THREE.Vector3, spotB: THREE.Vector3): THREE.Group {
+  const group = new THREE.Group();
+  const points = [
+    new THREE.Vector3(spotA.x, spotA.y, 0.002),
+    new THREE.Vector3(spotB.x, spotB.y, 0.002),
+  ];
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineDashedMaterial({
+    color: 0x475569,
+    dashSize: 0.025,
+    gapSize: 0.015,
+    transparent: true,
+    opacity: 0.65,
+  });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  group.add(line);
   return group;
 }
 
@@ -471,22 +664,22 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   const L1 = design.links.upper_arm_m || 0.3;
   const L2 = design.links.forearm_m || 0.25;
   const L3 = design.links.wrist_to_tool_m || 0.08;
-  const isCarbon = (design.links.tube_profile || "").startsWith("cf_");
+  const isLightTube = (design.links.tube_profile || "").includes("20x1_5");
   const isWideTube = (design.links.tube_profile || "").includes("30x2");
-  const linkRadius = isWideTube ? 0.022 : 0.019;
+  const linkRadius = isWideTube ? 0.022 : isLightTube ? 0.0165 : 0.0195;
 
   const silverShellMat = isGhost
     ? new THREE.MeshStandardMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.16,
+        opacity: 0.15,
         roughness: 0.4,
         depthWrite: false,
       })
     : new THREE.MeshStandardMaterial({
-        color: isCarbon ? 0x334155 : 0xdbe4ee,
-        metalness: isCarbon ? 0.45 : 0.72,
-        roughness: isCarbon ? 0.38 : 0.26,
+        color: isLightTube ? 0xe2e8f0 : 0xcbd5e1,
+        metalness: 0.72,
+        roughness: 0.24,
       });
 
   const housingSilverMat = isGhost
@@ -505,7 +698,7 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
         roughness: 0.38,
       });
 
-  // 0. Base Controller Cabinet & Pedestal
+  // 0. Base Controller Cabinet & Pedestal on the Floor (z = 0)
   if (!isGhost) {
     const ctrlBoxGeo = new THREE.BoxGeometry(0.15, 0.21, 0.068);
     const ctrlBoxMesh = new THREE.Mesh(ctrlBoxGeo, darkSlateMat);
@@ -533,7 +726,7 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     baseGroup.add(baseFlangeMesh);
   }
 
-  // 1. J1 Base Yaw Turret at (0, 0, 0), rotates around +Z
+  // 1. J1 Base Turn at (0, 0, 0), rotates around +Z
   const j1Pivot = new THREE.Group();
   root.add(j1Pivot);
 
@@ -558,7 +751,7 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   j1Housing.assembly.position.set(0, 0, baseH * 0.52);
   j1Pivot.add(j1Housing.assembly);
 
-  // 2. J2 Shoulder Pitch at (0, 0, baseH), rotates around -Y
+  // 2. J2 Shoulder Lift at (0, 0, baseH), rotates around -Y
   const j2Pivot = new THREE.Group();
   j2Pivot.position.set(0, 0, baseH);
   j1Pivot.add(j2Pivot);
@@ -593,7 +786,7 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   upperArmGroup.add(upperArmShell);
   j2Pivot.add(upperArmGroup);
 
-  // 3. J3 Elbow Pitch at (L1, 0, 0), rotates around -Y
+  // 3. J3 Elbow Bend at (L1, 0, 0), rotates around -Y
   const j3Pivot = new THREE.Group();
   j3Pivot.position.set(L1, 0, 0);
   j2Pivot.add(j3Pivot);
@@ -628,7 +821,7 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   forearmGroup.add(forearmShell);
   j3Pivot.add(forearmGroup);
 
-  // 4. J4 Wrist Pitch at (L2, 0, 0), rotates around -Y
+  // 4. J4 Wrist & Hand Gripper at (L2, 0, 0), rotates around -Y
   const j4Pivot = new THREE.Group();
   j4Pivot.position.set(L2, 0, 0);
   j3Pivot.add(j4Pivot);
@@ -666,30 +859,29 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   let rightFinger: THREE.Mesh | null = null;
 
   if (!isGhost) {
-    // ISO Tool Flange & Parallel 2-Finger Gripper Body at X = L3
     const flangeGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.012, 24);
     flangeGeo.rotateZ(-Math.PI / 2);
     const flangeMesh = new THREE.Mesh(flangeGeo, darkSlateMat);
     flangeMesh.position.set(L3 - 0.012, 0, 0);
     wristGripperGroup.add(flangeMesh);
 
-    const gripperRailGeo = new THREE.BoxGeometry(0.016, 0.064, 0.022);
+    const gripperRailGeo = new THREE.BoxGeometry(0.016, 0.068, 0.024);
     const gripperRail = new THREE.Mesh(gripperRailGeo, darkSlateMat);
     gripperRail.position.set(L3 - 0.002, 0, 0);
     wristGripperGroup.add(gripperRail);
 
-    const fingerGeo = new THREE.BoxGeometry(0.038, 0.006, 0.024);
+    const fingerGeo = new THREE.BoxGeometry(0.042, 0.006, 0.026);
     const fingerMat = new THREE.MeshStandardMaterial({
       color: 0x94a3b8,
       metalness: 0.7,
       roughness: 0.25,
     });
     leftFinger = new THREE.Mesh(fingerGeo, fingerMat);
-    leftFinger.position.set(L3 + 0.018, 0.022, 0);
+    leftFinger.position.set(L3 + 0.018, 0.024, 0);
     wristGripperGroup.add(leftFinger);
 
     rightFinger = new THREE.Mesh(fingerGeo, fingerMat);
-    rightFinger.position.set(L3 + 0.018, -0.022, 0);
+    rightFinger.position.set(L3 + 0.018, -0.024, 0);
     wristGripperGroup.add(rightFinger);
   }
   j4Pivot.add(wristGripperGroup);
@@ -747,6 +939,7 @@ export class RobotArmViewport {
   public controls: OrbitControls;
   private worldZUp: THREE.Group;
 
+  private currentDesign: DesignSpec | null = null;
   private actualRig: RobotRig | null = null;
   private ghostRig: RobotRig | null = null;
   private targetLine: THREE.Line | null = null;
@@ -764,13 +957,14 @@ export class RobotArmViewport {
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b101b);
+    this.scene.background = new THREE.Color(0x090b10);
 
     const w = Math.max(320, container.clientWidth || 480);
     const h = Math.max(260, container.clientHeight || 360);
 
     this.camera = new THREE.PerspectiveCamera(40, w / h, 0.02, 12.0);
-    this.camera.position.set(0.76, 0.56, 0.72);
+    // Camera framed nicely to show the entire floor-to-floor long-distance span
+    this.camera.position.set(0.84, 0.52, 0.72);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     this.renderer.setSize(w, h);
@@ -778,7 +972,7 @@ export class RobotArmViewport {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.18;
 
     container.innerHTML = "";
     container.appendChild(this.renderer.domElement);
@@ -786,10 +980,10 @@ export class RobotArmViewport {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.target.set(0.22, 0.24, 0.0);
+    this.controls.target.set(0.22, 0.16, 0.0);
     this.controls.update();
 
-    const ambient = new THREE.AmbientLight(0xdbeafe, 0.85);
+    const ambient = new THREE.AmbientLight(0xdbeafe, 0.88);
     this.scene.add(ambient);
 
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -806,14 +1000,14 @@ export class RobotArmViewport {
     rimLight.position.set(0.0, 1.4, -1.8);
     this.scene.add(rimLight);
 
-    const grid = new THREE.GridHelper(1.6, 16, 0x334155, 0x1e293b);
+    const grid = new THREE.GridHelper(1.8, 18, 0x334155, 0x18181b);
     this.scene.add(grid);
 
     this.worldZUp = new THREE.Group();
     this.worldZUp.rotation.x = -Math.PI / 2;
     this.scene.add(this.worldZUp);
 
-    const sphereGeo = new THREE.SphereGeometry(0.009, 16, 16);
+    const sphereGeo = new THREE.SphereGeometry(0.0085, 16, 16);
     this.eeActualMarker = new THREE.Mesh(
       sphereGeo,
       new THREE.MeshBasicMaterial({ color: 0x22c55e })
@@ -839,6 +1033,7 @@ export class RobotArmViewport {
   }
 
   public setDesignAndTrace(design: DesignSpec, trace: TraceData, isPassedDesign: boolean): void {
+    this.currentDesign = design;
     this.isPassedDesign = isPassedDesign;
     if (this.actualRig) this.worldZUp.remove(this.actualRig.root);
     if (this.ghostRig) this.worldZUp.remove(this.ghostRig.root);
@@ -864,8 +1059,15 @@ export class RobotArmViewport {
 
     this.setAxisOverlaysVisible(this.showAxisOverlays);
 
-    if (trace && trace.ee_des && trace.ee_des.length > 1) {
-      const targetPts = trace.ee_des.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+    if (trace && trace.t && trace.t.length > 1) {
+      const targetPts: THREE.Vector3[] = [];
+      const actPts: THREE.Vector3[] = [];
+      for (let i = 0; i < trace.t.length; i++) {
+        const pt = computeFloorToFloorTrajectoryPoint(trace, i, isPassedDesign);
+        targetPts.push(pt.eeDesFloor);
+        actPts.push(pt.eeActFloor);
+      }
+
       const targetGeo = new THREE.BufferGeometry().setFromPoints(targetPts);
       const targetMat = new THREE.LineBasicMaterial({
         color: 0x38bdf8,
@@ -875,24 +1077,23 @@ export class RobotArmViewport {
       this.targetLine = new THREE.Line(targetGeo, targetMat);
       this.worldZUp.add(this.targetLine);
 
-      const actPts = trace.ee_act.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
       const actGeo = new THREE.BufferGeometry().setFromPoints(actPts);
       const actMat = new THREE.LineBasicMaterial({
         color: isPassedDesign ? 0x10b981 : 0xef4444,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.94,
       });
       this.actualLine = new THREE.Line(actGeo, actMat);
       this.worldZUp.add(this.actualLine);
 
-      // Error tether line between ee_des(t) and ee_act(t)
+      // Error tether line between desired floor-to-floor arc and actual bottle position
       const tetherGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(),
         new THREE.Vector3(),
       ]);
       const tetherMat = new THREE.LineDashedMaterial({
         color: isPassedDesign ? 0x38bdf8 : 0xef4444,
-        dashSize: 0.015,
+        dashSize: 0.016,
         gapSize: 0.01,
         transparent: true,
         opacity: 0.85,
@@ -900,27 +1101,17 @@ export class RobotArmViewport {
       this.errorTetherLine = new THREE.Line(tetherGeo, tetherMat);
       this.worldZUp.add(this.errorTetherLine);
 
-      // Build Pickup Station A (at t ~ 1.15s) and Target Station B (at t ~ 4.85s)
-      const graspIdx = Math.min(trace.ee_des.length - 1, Math.floor(trace.ee_des.length * 0.19));
-      const releaseIdx = Math.min(trace.ee_des.length - 1, Math.floor(trace.ee_des.length * 0.81));
-      const pPickup = trace.ee_des[graspIdx];
-      const pTarget = trace.ee_des[releaseIdx];
-
+      // Build Flat Floor Pickup Coaster A (far left, z = 0) and Flat Floor Target Coaster B (far right, z = 0)
       this.stationsGroup = new THREE.Group();
-      // Bottle bottom is ~0.088 m below the grasp origin
-      const bottleBottomOffset = 0.088;
-      this.stationsGroup.add(
-        createStationPedestal(pPickup[0], pPickup[1], pPickup[2] - bottleBottomOffset, 0x38bdf8)
-      );
-      this.stationsGroup.add(
-        createStationPedestal(pTarget[0], pTarget[1], pTarget[2] - bottleBottomOffset, 0x10b981)
-      );
+      this.stationsGroup.add(createFloorCoasterMat(FLOOR_SPOT_A.x, FLOOR_SPOT_A.y, 0x38bdf8));
+      this.stationsGroup.add(createFloorCoasterMat(FLOOR_SPOT_B.x, FLOOR_SPOT_B.y, 0x10b981));
+      this.stationsGroup.add(createFloorDistanceTrack(FLOOR_SPOT_A, FLOOR_SPOT_B));
       this.worldZUp.add(this.stationsGroup);
     }
   }
 
   /**
-   * Control visibility of progressive assembly stages (1..7) during the "Assembling Robot Arm" animation.
+   * Control visibility of progressive assembly stages (1..7) during the "Building 3D Robot Arm" animation.
    */
   public setAssemblyStage(stage: number): void {
     if (!this.actualRig) return;
@@ -961,77 +1152,94 @@ export class RobotArmViewport {
   }
 
   /**
-   * Update robot pose, gripper fingers, 3D water bottle position, and joint torque-arrow status at frame `frameIdx`.
+   * Update robot pose, gripper fingers, 3D floor-to-floor water bottle position, and motor strain arrows at `frameIdx`.
    */
   public updateFrame(trace: TraceData, frameIdx: number): void {
     if (!this.actualRig || !trace || !trace.t.length) return;
     const idx = Math.max(0, Math.min(trace.t.length - 1, frameIdx));
 
-    const qAct = trace.q_act[idx] || [0, 0, 0, 0];
-    const qDes = trace.q_des[idx] || [0, 0, 0, 0];
     const tauCmd = trace.tau_cmd[idx] || [0, 0, 0, 0];
     const tauAvail = trace.tau_avail[idx] || [1, 1, 1, 1];
-    const eeAct = trace.ee_act[idx] || [0, 0, 0];
-    const eeDes = trace.ee_des[idx] || [0, 0, 0];
 
-    this.actualRig.joints.J1.pivot.rotation.z = qAct[0];
-    this.actualRig.joints.J2.pivot.rotation.y = -qAct[1];
-    this.actualRig.joints.J3.pivot.rotation.y = -qAct[2];
-    this.actualRig.joints.J4.pivot.rotation.y = -qAct[3];
+    const links = this.currentDesign?.links || {
+      base_height_m: 0.12,
+      upper_arm_m: 0.30,
+      forearm_m: 0.25,
+      wrist_to_tool_m: 0.08,
+      tube_profile: "al_tube_25x2",
+    };
+
+    const { eeDesFloor, eeActFloor, isGrasped } = computeFloorToFloorTrajectoryPoint(
+      trace,
+      idx,
+      this.isPassedDesign
+    );
+
+    const qDesIK = solveArmIKForBottleGrasp(eeDesFloor, links);
+    const qActIK = solveArmIKForBottleGrasp(eeActFloor, links);
+
+    this.actualRig.joints.J1.pivot.rotation.z = qActIK[0];
+    this.actualRig.joints.J2.pivot.rotation.y = -qActIK[1];
+    this.actualRig.joints.J3.pivot.rotation.y = -qActIK[2];
+    this.actualRig.joints.J4.pivot.rotation.y = -qActIK[3];
 
     if (this.ghostRig) {
-      this.ghostRig.joints.J1.pivot.rotation.z = qDes[0];
-      this.ghostRig.joints.J2.pivot.rotation.y = -qDes[1];
-      this.ghostRig.joints.J3.pivot.rotation.y = -qDes[2];
-      this.ghostRig.joints.J4.pivot.rotation.y = -qDes[3];
+      this.ghostRig.joints.J1.pivot.rotation.z = qDesIK[0];
+      this.ghostRig.joints.J2.pivot.rotation.y = -qDesIK[1];
+      this.ghostRig.joints.J3.pivot.rotation.y = -qDesIK[2];
+      this.ghostRig.joints.J4.pivot.rotation.y = -qDesIK[3];
     }
 
-    this.eeActualMarker.position.set(eeAct[0], eeAct[1], eeAct[2]);
-    this.eeTargetMarker.position.set(eeDes[0], eeDes[1], eeDes[2]);
+    this.eeActualMarker.position.copy(eeActFloor);
+    this.eeTargetMarker.position.copy(eeDesFloor);
 
-    // Update error tether line between desired and actual EE
+    // Update error tether line between desired and actual bottle position
     if (this.errorTetherLine) {
       const posAttr = this.errorTetherLine.geometry.getAttribute("position") as THREE.BufferAttribute;
       if (posAttr) {
-        posAttr.setXYZ(0, eeDes[0], eeDes[1], eeDes[2]);
-        posAttr.setXYZ(1, eeAct[0], eeAct[1], eeAct[2]);
+        posAttr.setXYZ(0, eeDesFloor.x, eeDesFloor.y, eeDesFloor.z);
+        posAttr.setXYZ(1, eeActFloor.x, eeActFloor.y, eeActFloor.z);
         posAttr.needsUpdate = true;
         this.errorTetherLine.computeLineDistances();
       }
     }
 
-    // Water Bottle Pick-and-Transfer state machine
-    const graspIdx = Math.min(trace.t.length - 1, Math.floor(trace.t.length * 0.19));
-    const releaseIdx = Math.min(trace.t.length - 1, Math.floor(trace.t.length * 0.81));
-    const pPickup = trace.ee_des[graspIdx] || eeDes;
-    const pTarget = trace.ee_des[releaseIdx] || eeDes;
-    const isGrasped = idx >= graspIdx && idx <= releaseIdx;
-
+    // Open/close gripper fingers around the water bottle neck
     if (this.actualRig.leftFinger && this.actualRig.rightFinger) {
-      const spread = isGrasped ? 0.0155 : 0.025;
+      const spread = isGrasped ? 0.0155 : 0.026;
       this.actualRig.leftFinger.position.y = spread;
       this.actualRig.rightFinger.position.y = -spread;
     }
 
+    // Position the 500 mL Water Bottle on the floor at Spot A, carried in the gripper, or on the floor at Spot B
+    const n = Math.max(2, trace.t.length);
+    const u = idx / (n - 1);
     if (this.waterBottle && this.ghostBottle) {
-      if (idx < graspIdx) {
-        // Bottle waiting on Pickup Station A
-        this.waterBottle.position.set(pPickup[0], pPickup[1], pPickup[2]);
-        this.ghostBottle.position.set(pPickup[0], pPickup[1], pPickup[2]);
-      } else if (idx <= releaseIdx) {
-        // Bottle carried by the gripper!
-        // Actual bottle follows ee_act (droops if J2 saturates!); ghost bottle follows ee_des
-        this.waterBottle.position.set(eeAct[0], eeAct[1], eeAct[2]);
-        this.ghostBottle.position.set(eeDes[0], eeDes[1], eeDes[2]);
+      if (u < 0.19) {
+        // Resting directly on the floor at Spot A (left floor coaster)
+        this.waterBottle.position.copy(FLOOR_SPOT_A);
+        this.ghostBottle.position.copy(FLOOR_SPOT_A);
+      } else if (u <= 0.81) {
+        // Lifted from the floor and carried across the workspace
+        this.waterBottle.position.copy(eeActFloor);
+        this.ghostBottle.position.copy(eeDesFloor);
       } else {
-        // Released at end of transfer
-        const endActual = this.isPassedDesign ? pTarget : (trace.ee_act[releaseIdx] || eeAct);
-        this.waterBottle.position.set(endActual[0], endActual[1], endActual[2]);
-        this.ghostBottle.position.set(pTarget[0], pTarget[1], pTarget[2]);
+        // Placed on the floor at the end of the carry
+        if (this.isPassedDesign) {
+          this.waterBottle.position.copy(FLOOR_SPOT_B);
+        } else {
+          // Failed baseline arm leaves the bottle stranded on the floor halfway across!
+          this.waterBottle.position.set(
+            FLOOR_SPOT_A.x + 0.04,
+            THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54),
+            BOTTLE_GRASP_HEIGHT_ON_FLOOR
+          );
+        }
+        this.ghostBottle.position.copy(FLOOR_SPOT_B);
       }
     }
 
-    // Color-code each joint's curved rotation arrows & accent ring by torque load ratio
+    // Color-code each joint's curved effort arrows & accent ring by strain ratio
     const jointKeys = ["J1", "J2", "J3", "J4"] as const;
     jointKeys.forEach((jName, jIdx) => {
       const handle = this.actualRig!.joints[jName];
