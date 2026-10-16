@@ -24,9 +24,9 @@ RAW_PARTS = [
         "vendor": "ROBOTIS",
         "series": "DYNAMIXEL-X",
         "rated_voltage_v": 12.0,
-        "stall_torque_nm": 1.4,
-        "stall_raw": "1.4 N.m (at 12.0V, 1.3A)",
-        "continuous_torque_nm": None,  # Derived 0.33 * stall = 0.462
+        "stall_torque_nm": 1.5,
+        "stall_raw": "1.5 N.m (at 12.0V, 1.4A)",
+        "continuous_torque_nm": None,  # Engineering estimate: 0.33 * stall = 0.495
         "no_load_speed_rpm": 61.0,
         "speed_raw": "61 rev/min (at 12.0V)",
         "mass_kg": 0.0572,
@@ -369,6 +369,31 @@ RAW_PARTS = [
 ]
 
 
+SOURCE_VERIFICATIONS = {
+    "XL430-W250": {
+        "source_verified": True, "checked_at": "2026-10-16",
+        "primary_source_url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/",
+        "verified_fields": ["product_identity", "stall_torque_nm", "no_load_speed_rad_s", "mass_kg", "dimensions_mm"],
+        "unverified_fields": ["continuous_torque_nm", "price_usd", "mounting_compatibility"],
+        "voltage_v": 12.0,
+        "note": "Official 12 V row is 1.5 N.m; 1.4 N.m belongs to the 11.1 V row. Continuous torque is an estimate.",
+    },
+    "XM430-W350": {
+        "source_verified": True, "checked_at": "2026-10-16",
+        "primary_source_url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/",
+        "verified_fields": ["product_identity", "stall_torque_nm", "no_load_speed_rad_s", "mass_kg", "dimensions_mm"],
+        "unverified_fields": ["continuous_torque_nm", "price_usd", "mounting_compatibility"],
+        "voltage_v": 12.0,
+        "note": "Official 12 V row confirms 4.1 N.m and 46 rpm. The seed continuous torque is not a manufacturer thermal rating.",
+    },
+    **{part_id: {
+        "source_verified": False, "checked_at": "2026-10-16", "test_fixture_only": True,
+        "primary_source_url": "https://apexdynamicsusa.com/pgii-series-high-precision-planetary-gearboxes.html",
+        "note": "No primary vendor evidence was found for this exact model. The official PGII family is a different product; this generated reference is excluded from normal projects.",
+    } for part_id in ("APEX-PG20-2", "APEX-PG20-3")},
+}
+
+
 def _render_pdf(part: dict, out_path: Path) -> None:
     """Create a realistic 2-page engineering datasheet PDF with specification table and curves."""
     with PdfPages(out_path) as pdf:
@@ -420,13 +445,16 @@ def _render_pdf(part: dict, out_path: Path) -> None:
                 if part["continuous_torque_nm"] is not None
                 else "Not specified (use thermal derating guidelines)"
             )
+            if part.get("series") == "DYNAMIXEL-X":
+                estimate = part["continuous_torque_nm"] if part["continuous_torque_nm"] is not None else 0.33 * part["stall_torque_nm"]
+                cont_str = f"{estimate:.3f} N.m (engineering estimate)"
             rows = [
                 ["Parameter", "Symbol", "Specification Value", "Test Condition / Notes"],
                 ["Part Number", "ID", part["part_id"], part["series"]],
                 ["Manufacturer", "Vendor", part["vendor"], part["motor_type"]],
                 ["Rated Input Voltage", "V_rated", f"{part['rated_voltage_v']:.1f} V", "Nominal DC Bus"],
                 ["Stall / Peak Torque", "tau_stall", part["stall_raw"], f"At {part['rated_voltage_v']:.1f} V"],
-                ["Continuous Rated Torque", "tau_cont", cont_str, "25 degC ambient, continuous duty"],
+                ["Continuous Torque Input", "tau_cont", cont_str, "Estimate; verify manufacturer thermal rating"],
                 ["No-Load Speed", "omega_0", part["speed_raw"], "Unloaded output shaft"],
                 ["Actuator Mass (Weight)", "m_act", part["mass_raw"], "Includes housing & internal gearhead"],
                 ["Internal Reduction", "i_int", part["gear_ratio_internal"], "Integrated gear stage"],
@@ -560,7 +588,7 @@ def generate_all() -> dict:
                 derived = True
             else:
                 cont = float(p["continuous_torque_nm"])
-                derived = False
+                derived = p.get("vendor") == "ROBOTIS" and p.get("series") == "DYNAMIXEL-X"
             w_rad_s = round(float(p["no_load_speed_rpm"]) * 2.0 * np.pi / 60.0, 3)
 
             entry = {
@@ -632,6 +660,12 @@ def generate_all() -> dict:
                 "confidence": "high",
                 "user_confirmed": True,
             }
+        if p["part_id"] in SOURCE_VERIFICATIONS:
+            entry["source_verification"] = SOURCE_VERIFICATIONS[p["part_id"]]
+        if p.get("series") == "DYNAMIXEL-X":
+            entry["continuous_torque_nm"]["derived"] = True
+            entry["continuous_torque_nm"]["derivation"] = "Engineering estimate; not an official continuous thermal rating"
+            entry["continuous_torque_nm"]["raw"] = f"Engineering estimate: {entry['continuous_torque_nm']['value']} N.m (not manufacturer rated)"
         entry["provenance"] = {"source": "project_generated_reference", "manufacturer_verified": False,
                                "requires_spec_review": True, "source_url": p.get("source_url")}
         catalog_parts.append(entry)

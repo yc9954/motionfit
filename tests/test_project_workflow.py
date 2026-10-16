@@ -217,3 +217,32 @@ def test_invalid_initial_design_is_not_persisted_and_upload_requires_reextractio
     assert response.status_code == 200
     # An old JSON body cannot bypass the persisted source-change flag.
     assert api.put(f"/api/projects/{project_id}/catalog", json=project["catalog"]).status_code == 422
+
+
+def test_unsupported_robot_topology_is_not_silently_treated_as_four_axes(api):
+    project = api.post('/api/projects', json={}).json()
+    pid = project['project_id']
+    assert api.post(f'/api/projects/{pid}/task', json={'prompt': 'Build a 6-DOF arm', 'constraints': {'payload_kg': .5}}).status_code == 422
+    design = project['design']
+    design['topology'] = '6dof'
+    assert api.put(f'/api/projects/{pid}/design', json=design).status_code == 422
+
+
+def test_followup_task_starts_from_accepted_candidate_not_original_hardware(api, monkeypatch):
+    stub_passing_loop(monkeypatch)
+    pid = create_ready(api)
+    run = api.post(f'/api/projects/{pid}/run', json={'max_iterations': 1}).json()
+    completed = wait_run(api, run['run_id'])
+    selected = completed['loop_result']['final_design']
+    assert api.post(f'/api/projects/{pid}/accept', json={'run_id': run['run_id']}).status_code == 200
+    changed = api.post(f'/api/projects/{pid}/task', json={'prompt': 'Change payload to 0.3 kg'}).json()
+    assert changed['design']['design_id'] == selected['design_id']
+    assert changed['design']['joints'] == selected['joints']
+    assert changed['design']['payload_kg'] == .3
+    assert api.get(f'/api/projects/{pid}').json()['accepted'] is False
+
+
+def test_untrusted_browser_cannot_trigger_local_project_or_model_actions(api):
+    response = api.post('/api/projects', json={}, headers={'Origin': 'https://untrusted.example'})
+    assert response.status_code == 403
+    assert api.post('/api/projects', json={}, headers={'Origin': 'http://127.0.0.1:5173'}).status_code == 200

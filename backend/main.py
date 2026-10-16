@@ -7,10 +7,12 @@ import datetime
 import json
 import io
 import math
+import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import google.genai as genai
@@ -32,7 +34,19 @@ from backend.storage import build_export_zip, create_project, ensure_demo_projec
 from backend.task_planner import apply_task_to_design, plan_task
 
 app = FastAPI(title="MotionFit API", version="2.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+TRUSTED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"} | {value.strip().rstrip("/") for value in os.environ.get("MOTIONFIT_CORS_ORIGINS", "").split(",") if value.strip()}
+app.add_middleware(CORSMiddleware, allow_origins=sorted(TRUSTED_ORIGINS), allow_credentials=False, allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type"])
+
+
+@app.middleware("http")
+async def reject_untrusted_browser_mutations(request: Request, call_next):
+    origin = request.headers.get("origin", "").rstrip("/")
+    if origin and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        parsed = urlsplit(origin)
+        same_origin = parsed.scheme in ("http", "https") and parsed.netloc == request.url.netloc
+        if not same_origin and origin not in TRUSTED_ORIGINS:
+            return JSONResponse(status_code=403, content={"detail": "Untrusted browser origin"})
+    return await call_next(request)
 RUN_EVENTS: Dict[str, List[Dict[str, Any]]] = {}
 RUN_STATUS: Dict[str, str] = {}
 RUN_RECORDS: Dict[str, Dict[str, Any]] = {}
@@ -118,6 +132,8 @@ def _optional(project_id: str, filename: str, default: Any = None) -> Any:
 
 def _validate_design(design: Dict[str, Any], catalog: Dict[str, Any]) -> None:
     json.dumps(design, allow_nan=False)
+    if design.get("topology") != "4dof_yaw_pitch_pitch_pitch":
+        raise ValueError("Only the 4dof_yaw_pitch_pitch_pitch topology has a verified model")
     try:
         if not isinstance(design["payload_kg"], (int, float)) or isinstance(design["payload_kg"], bool) or not 0 <= design["payload_kg"] <= 100:
             raise ValueError("payload_kg must be a finite number from 0 to 100")
@@ -225,7 +241,12 @@ async def api_get_project(project_id: str) -> Dict[str, Any]:
 async def api_plan_task(project_id: str, req: TaskRequest) -> Dict[str, Any]:
     with _editing(project_id):
         task = await asyncio.to_thread(plan_task, req.prompt, req.constraints, _optional(project_id, "task.json"), req.orientation_constraint)
-        design = apply_task_to_design(load_json(project_id, "design.json"), task)
+        baseline = load_json(project_id, "design.json")
+        workflow = _optional(project_id, "workflow.json", {})
+        if workflow.get("accepted"):
+            baseline = _current_passing_result(project_id)["final_design"]
+            task["assumptions"].append("Starting hardware is the previously accepted verified candidate, with the updated task constraints.")
+        design = apply_task_to_design(baseline, task)
         _validate_design(design, load_json(project_id, "catalog.json"))
         invalidate_results(project_id, "Task requirements changed")
         save_json(project_id, "task.json", task)

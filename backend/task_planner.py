@@ -56,6 +56,9 @@ def plan_task(prompt: str, constraints: Optional[Dict[str, Any]] = None, previou
     prompt = prompt.strip()
     if not prompt:
         raise ValueError("Describe the task before starting verification")
+    requested_axes = re.search(r"\b([1-9])\s*[- ]?(?:dof|joints?|axes)\b|([1-9])\s*축", prompt.lower())
+    if requested_axes and int(requested_axes.group(1) or requested_axes.group(2)) != 4:
+        raise ValueError("This workspace verifies a 4-DOF arm. Another joint topology needs a corresponding kinematic and dynamic model.")
     old_constraints = (previous or {}).get("constraints", {})
     orientation_hint = "keep_level" if re.search(r"수평|평평|keep.level|horizontal", prompt, re.I) else ("keep_upright" if re.search(r"세워|똑바로|수직|upright", prompt, re.I) else (previous or {}).get("orientation_constraint", "free"))
     parsed = {"summary": prompt, "constraints": _explicit_requirements(prompt), "orientation_constraint": orientation_hint}
@@ -75,8 +78,16 @@ def plan_task(prompt: str, constraints: Optional[Dict[str, Any]] = None, previou
                 raise ValueError("Model did not return valid task requirements")
             parsed = live
             source = "gemini_structured_task"
-        except Exception:
-            failure = "Task model unavailable; only explicitly written numbers and units were parsed."
+        except Exception as exc:
+            message = str(exc).lower()
+            if "api key not valid" in message or "api_key_invalid" in message:
+                failure = "The configured Gemini API key was rejected. Only explicitly written numbers and units were parsed."
+            elif "not found" in message or "permission" in message or "not supported" in message:
+                failure = "The configured Gemini model is unavailable to this account or request. Only explicitly written numbers and units were parsed."
+            else:
+                failure = "Task model unavailable; only explicitly written numbers and units were parsed."
+    elif source == "explicit_unit_parser":
+        failure = "No live task model is enabled. Only explicitly written numbers and units were parsed."
     combined = copy.deepcopy(old_constraints)
     combined.update({key: value for key, value in parsed["constraints"].items() if key in CONSTRAINT_FIELDS and value is not None})
     for key, value in (constraints or {}).items():

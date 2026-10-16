@@ -195,7 +195,7 @@ def _build_ee_error_svg(
   <polyline fill="none" stroke="#ef4444" stroke-width="2.0" points="{poly(t_series, initial_err_mm)}" opacity="0.9"/>
   <polyline fill="none" stroke="#10b981" stroke-width="2.4" points="{poly(t_series, final_err_mm)}"/>
   <text x="{pad_l + 8}" y="{pad_t + 14}" fill="#cbd5e1" font-size="11" font-family="sans-serif">
-    Before EE Error (red) vs. Final Verified EE Error (green) &middot; Threshold = {threshold_mm:.1f} mm (dashed cyan) &middot; Initial Worst Frame t = {worst_t_s:.2f} s
+    Initial EE Error (red) vs. Selected Candidate EE Error (green) &middot; Threshold = {threshold_mm:.1f} mm (dashed cyan) &middot; Initial Worst Frame t = {worst_t_s:.2f} s
   </text>
   <text x="{width / 2:.1f}" y="{height - 8}" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="sans-serif">Time (s) [0.0 &ndash; {t_max:.1f} s] &middot; Y-axis: End-Effector Position Error ||p_actual &minus; p_target|| (mm)</text>
 </svg>"""

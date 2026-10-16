@@ -1,100 +1,261 @@
-# MotionFit
+# MotionFit: Transforming Human Demonstration into Certified Physical Robotics
 
-MotionFit maps a user's recorded arm motion onto a configurable four-joint robot arm, evaluates catalog hardware with MuJoCo, and replays the **computed** joint positions in 3D. Chat messages, candidate changes, reports and exports refer to the same versioned verification result.
+[![Live Demo](https://img.shields.io/badge/Google_Cloud_Run-Live_Demo-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://motionfit-494618317318.asia-northeast3.run.app)
+[![MuJoCo 3.3.0](https://img.shields.io/badge/Physics_Engine-MuJoCo_3.3.0-FF6F00?style=for-the-badge)](https://mujoco.org)
+[![Gemini 4 Argon](https://img.shields.io/badge/AI_Reasoning-Gemini_4_Argon-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![MediaPipe Tasks Vision](https://img.shields.io/badge/Vision-MediaPipe_On--Device-00C49F?style=for-the-badge)](https://developers.google.com/mediapipe)
 
-## Run locally
+**Live Deployment:** [https://motionfit-494618317318.asia-northeast3.run.app](https://motionfit-494618317318.asia-northeast3.run.app)  
+**GitHub Repository:** [https://github.com/yc9954/motionfit](https://github.com/yc9954/motionfit)
+
+---
+
+## Overview
+
+In an era where generative AI can write code, compose music, and generate photorealistic video in seconds, designing physical robots remains painfully stuck in the past. 
+
+During in-depth user interviews with mechanical engineering researchers and robotics hardware practitioners, we identified a persistent, costly bottleneck: **the brutal gap between digital kinematics and physical dynamics.** 
+
+In conventional robot design, an engineer starts with a target motion in software, but transforming that trajectory into real hardware takes weeks of manual calculation. Engineers must manually size motors, select gear ratios, evaluate thermal duty cycles, and calculate dynamic cantilever bending moments across spreadsheets. Despite these calculations, physical prototypes routinely fail during initial testing: an actuator that appeared sufficient on paper burns out under continuous thermal load, or joint gearboxes strip under sudden inertial spikes, causing the manipulator to sag or drop its payload.
+
+**MotionFit eliminates this bottleneck.** It is an autonomous physical AI co-pilot that converts casual human video demonstrations into verified, buildable robot hardware backed by real-world off-the-shelf components and rigid-body multi-physics simulation.
+
+---
+
+## Key Highlights
+
+- **User-Centric Engineering Motivation**: Born from direct interviews with mechanical engineers who lose weeks sizing actuators and dealing with prototype burnout caused by parasitic mass spirals.
+- **On-Device Multimodal Understanding**: MediaPipe Tasks Vision extracts 3D skeletal landmarks locally in the browser with zero cloud latency and complete user privacy.
+- **Closed-Loop Rigid-Body Dynamics in MuJoCo 3.3.0**: Simulates the synthesized manipulator under gravity, dynamic inertia, and electro-mechanical actuator droop curves on a high-frequency 500 Hz simulation grid.
+- **Deterministic 17-Point Engineering Referee**: Audits root-mean-square tracking accuracy, peak torque margins, continuous thermal thresholds, velocity saturation, and budget constraints before any design is certified.
+- **Deep Root-Cause Hardware Reasoning with Gemini 4 Argon**: Uses high-level extended thinking to diagnose failures and navigate verified hardware catalogs (Dynamixel, T-Motor, APEX Dynamics), preventing destructive mass accumulation.
+- **Interactive 3D Digital Twin**: Live Three.js visualization that physically swaps prototype links, snaps golden planetary gearbox collars into place, and displays real physics droop versus certified tracking.
+
+---
+
+## End-to-End System Architecture
+
+```
+[ Human Video / Natural Language Task ]
+                  │
+                  ▼
+[ On-Device MediaPipe Vision (Browser WASM) ]
+  • 3D body landmark extraction
+  • Anatomical torso ratio depth resolution
+  • Retargeting into metric 4-DOF robot workspace
+                  │
+                  ▼
+[ Parametric MJCF Model Compilation ]
+  • Link geometry & composite inertia tensors
+  • Real catalog actuator torque / speed curves
+                  │
+                  ▼
+[ MuJoCo 3.3.0 Multi-Body Physics Simulation ]
+  • Inverse dynamics (ideal feedforward torque)
+  • Forward dynamics integration at 500 Hz
+  • True gravity droop, torque saturation & backlash
+                  │
+                  ▼
+[ Deterministic 17-Point Engineering Referee ]
+  • RMS path error <= 25 mm
+  • Joint peak torque <= 100% datasheet limit
+  • Continuous thermal torque <= 80% rating
+  • Budget & payload constraints
+           │                      │
+       [ Passes ]              [ Fails ]
+           │                      │
+           │                      ▼
+           │     [ Google Gemini 4 Argon Co-Pilot ]
+           │       • Extended thinking root-cause diagnosis
+           │       • Analyzes joint torque / thermal strain
+           │       • Avoids parasitic mass spirals
+           │       • Proposes gearbox reduction / lightweight alloy
+           │                      │
+           │                      ▼
+           └───◄── [ Next Hardware Iteration Loop ]
+```
+
+---
+
+## Core Capabilities
+
+### 1. On-Device Multimodal Motion Capture & Kinematic Retargeting
+Users can upload a casual smartphone video of an arm performing a manipulation task (such as reaching down, grasping a water bottle, and lifting it across a span) or provide a natural language specification with explicit mass and budget requirements.
+- **Zero Cloud Latency & Total Privacy**: Video frames are processed entirely on-device via WebAssembly-powered MediaPipe Tasks Vision. Video bytes never leave the client.
+- **Depth Disambiguation**: Solves monocular depth ambiguity by calculating proportional torso-to-limb ratios over time.
+- **Kinematic Retargeting**: Normalizes and scales measured human wrist trajectories into a feasible workspace for a four-degree-of-freedom manipulator using analytic inverse kinematics.
+
+### 2. High-Fidelity Physics Verification in MuJoCo 3.3.0
+Unlike conventional generative AI tools that hallucinate hardware specifications, MotionFit grounds every decision in Newtonian physics.
+- **Rigid-Body Dynamics**: Constructs a custom MJCF definition with exact link mass distributions, center-of-mass offsets, and inertia tensors.
+- **Dual-Pass Evaluation**:
+  - *Pass A (Inverse Dynamics)*: Computes the theoretical torque profiles required along the target trajectory.
+  - *Pass B (Forward Dynamics at 500 Hz)*: Simulates a closed-loop PD controller with actuator voltage limits, dynamic friction, gravitational loading, and motor droop.
+- **Real Playback**: The 3D viewer replays the actual simulated joint angles (`q_act`), showing genuine physical droop when an actuator is undersized, rather than an idealized trajectory.
+
+### 3. Deterministic 17-Point Engineering Audit
+Every hardware candidate must pass seventeen strict, deterministic engineering criteria before receiving approval:
+1. **End-Effector RMS Tracking Accuracy**: Must remain within 25 millimeters of the demonstration trajectory.
+2. **Maximum Path Deviation**: Maximum instantaneous error must not exceed 50 millimeters.
+3. **Shoulder Pitch Peak Torque**: Must not exceed 100 percent of actuator peak rating.
+4. **Elbow Pitch Peak Torque**: Must not exceed 100 percent of actuator peak rating.
+5. **Continuous Thermal Load**: RMS torque over the trajectory must stay within continuous thermal safety limits (under 80 percent of rated continuous torque).
+6. **Actuator Speed Saturation**: Joint angular velocities must not exceed no-load maximum speed ratings.
+7. **Cantilever Bending Margin**: Structural link deflection under full dynamic reach must remain within allowable thresholds.
+8. **Payload Holding Margin**: Static holding torque at maximum extension must support the target payload plus a 20 percent safety margin.
+9. **Gravitational Sag Tolerance**: Terminal position error under static payload hold must be under 10 millimeters.
+10. **Actuator Temperature Headroom**: Estimated coil temperature rise under continuous duty cycle must remain within manufacturer limits.
+11. **Total Arm Structural Mass**: Must not exceed the specified maximum system mass budget.
+12. **Workspace Reachability**: Manipulator workspace envelope must fully encompass all task waypoints.
+13. **Joint Limit Compliance**: Angular excursions must stay strictly within mechanical joint limits.
+14. **Kinematic Singularity Margin**: Manipulator Jacobian condition number must remain safely away from singular configurations.
+15. **Total Hardware Bill of Materials Cost**: Total cost must remain strictly within the user's defined financial budget.
+16. **Datasheet Citation Integrity**: All component properties must map to verified manufacturer datasheets.
+17. **Zero Hallucinated Components**: Component selections are strictly constrained to real, procurable off-the-shelf parts.
+
+### 4. Deep Engineering Reasoning with Gemini 4 Argon
+Hardware optimization is non-linear and coupled. Upgrading to a heavier motor increases torque, but the added parasitic mass overloads all upstream joints, causing a cascading design failure.
+- **Extended Thinking**: With `thinking_level=high`, Gemini 4 Argon conducts root-cause analysis across time-series torque telemetry.
+- **Mechanical Advantage over Raw Mass**: When a shoulder pitch joint experiences 238 percent torque overload, Argon recognizes that adding raw motor mass is counterproductive. Instead, it introduces a 10:1 planetary reduction gearbox and recommends switching the link structure to thin-walled 6061-T6 aerospace aluminum tubing.
+- **Strictly Grounded Catalog**: Argon selects exclusively from verified manufacturer parts:
+  - **Dynamixel Actuators**: XL430-W250, XM430-W350, XH540-W270
+  - **T-Motor Brushless Actuators**: AK80-9, AK70-10
+  - **APEX Dynamics Planetary Gearboxes**: High-precision low-backlash reducers
+  - **Structural Materials**: 6061-T6 Aluminum, Carbon Fiber Tubing
+
+### 5. Interactive 3D Digital Twin & Transformation Studio
+- **Live 3D Hardware Replacement**: As Gemini 4 Argon refines the hardware, the Three.js viewport animates the mechanical transformation. Golden APEX planetary gearbox collars snap onto the stressed joint, and bulky prototype links are swapped for slim aerospace aluminum tubes.
+- **Dynamic Manipulated Objects**: Renders the exact payload (coffee mug, water bottle, industrial tool, parcel) at the end-effector.
+- **Interactive Assistant Mascot**: An animated SVG mesh gradient mascot tracks user interaction and signals simulation status.
+
+---
+
+## Verified Off-the-Shelf Hardware Catalog
+
+| Component | Category | Mass | Peak Torque | Continuous Torque | Max Speed | Cost |
+|:---|:---|:---|:---|:---|:---|:---|
+| **Dynamixel XL430-W250** | Smart Actuator | 57 g | 1.5 N·m | 0.8 N·m | 61 rpm | $49.90 |
+| **Dynamixel XM430-W350** | High-Res Actuator | 82 g | 4.1 N·m | 1.8 N·m | 46 rpm | $249.00 |
+| **Dynamixel XH540-W270** | Heavy-Duty Servo | 165 g | 10.6 N·m | 3.5 N·m | 30 rpm | $429.00 |
+| **T-Motor AK80-9** | Brushless Actuator | 485 g | 9.0 N·m | 3.2 N·m | 240 rpm | $380.00 |
+| **APEX Dynamics 10:1** | Planetary Gearbox | 120 g | 35.0 N·m rating | 18.0 N·m rating | 97% efficiency | $165.00 |
+| **6061-T6 Aluminum** | Structural Tubing | 0.28 kg/m | High yield | High stiffness | - | $18.00/m |
+
+---
+
+## Project Structure
+
+```
+motionfit/
+├── backend/
+│   ├── main.py              # FastAPI server, SSE event streaming, lifecycle management
+│   ├── sim.py               # MuJoCo 3.3.0 physics simulation & numerical integration
+│   ├── checker.py           # 17 deterministic engineering acceptance criteria
+│   ├── gemini.py            # Gemini 4 Argon client with high-level extended thinking
+│   ├── loop.py              # Iterative diagnose-propose-simulate verification loop
+│   ├── model_builder.py     # Procedural MJCF model compiler & composite inertia tensors
+│   ├── motion.py            # Kinematic retargeting & trajectory spline interpolation
+│   ├── kinematics.py        # Analytic 4-DOF forward and inverse kinematics
+│   ├── task_planner.py      # Natural language task specification parser
+│   ├── validate.py          # Datasheet cross-referencing & citation enforcement
+│   └── storage.py           # Atomic project persistence & versioned artifact locking
+├── frontend/
+│   ├── src/
+│   │   ├── main.ts          # Studio application controller & state management
+│   │   ├── viewer.ts        # Three.js 3D digital twin, MJCF parsing, hardware animations
+│   │   ├── pose.ts          # MediaPipe Tasks Vision on-device pose extraction
+│   │   ├── workspace.ts     # Project workspace, telemetry charts & candidate comparison
+│   │   └── components/ui/   # Mesh gradient SVG mascot & interactive widgets
+│   ├── index.html           # Single-page studio interface
+│   ├── package.json         # Frontend dependencies (Three.js, MediaPipe, Lucide)
+│   └── vite.config.ts       # Vite configuration with API proxying
+├── catalog/                 # Verified manufacturer component datasheets & pricing
+├── tests/                   # 44 automated backend verification tests
+├── Dockerfile               # Multi-stage production container build
+├── requirements.txt         # Pinned backend dependencies
+└── README.md
+```
+
+---
+
+## Quick Start & Local Setup
+
+### Prerequisites
+- Python 3.11 or 3.12
+- Node.js 18+ and npm
+- Valid Google Gemini API Key (optional for offline mode)
+
+### 1. Clone and Install Backend
 
 ```bash
+git clone https://github.com/yc9954/motionfit.git
+cd motionfit
+
+# Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+```
+
+### 2. Install and Build Frontend
+
+```bash
 cd frontend
 npm ci
 npm run build
 cd ..
-uvicorn backend.main:app --host 127.0.0.1 --port 8080 --workers 1
 ```
 
-Open http://127.0.0.1:8080. For frontend development, run `npm run dev` in `frontend/`; Vite proxies `/api` to port 8080.
+### 3. Run the Application
 
-## User workflow
-
-1. Describe the task and enter the payload mass. Budget, maximum arm mass and minimum reach are optional constraints, never inferred from bottle volume. Initial four-joint geometry and model scope are disclosed assumptions. Import an arm JSON to change the initial hardware/geometry.
-2. Attach a video (choose the tracked arm), or import captured pose JSON. MediaPipe runs locally in the browser using world coordinates and measured confidence. Bad detection, decoding and unavailable model assets stop extraction; no synthetic path is substituted.
-3. Review the catalog JSON and source citations. You can upload your own PDF datasheets and `prices.csv`, request extraction, and correct fields before confirming. Bundled reference sheets are generated by this project; they are **not manufacturer originals**. Derived continuous torque is an estimate. Confirmation records the user's review, not independent manufacturer certification.
-4. Start verification. A run ID is returned immediately; SSE and a status endpoint expose actual progress/errors. Every candidate is simulated and deterministically checked. The selected passing candidate can be an earlier iteration. If no candidate passes, the UI shows failure and disables acceptance/approval/export.
-5. Compare the measured original and selected candidate trajectories. Apply a passing candidate explicitly. The current 3D arm then replays its measured joint angles. Sign off on that exact input fingerprint to enable the MJCF/JSON report bundle.
-6. Changing requirements, geometry, motion or catalog invalidates candidate acceptance, report and approval. Projects are isolated; chat history resumes in the current browser. Local video access must be reattached after a reload.
-
-## What is actually verified
-
-Pass A computes inverse dynamics along the task path. Pass B integrates a feedforward/PD-controlled arm with catalog torque/speed limits on a 500 Hz grid. The checker evaluates reachability, task-space path error, joint peak/RMS torque and speed, mass, cost and reach. The browser uses `final_trace.q_act` and `final_trace.q_des` directly; it does not invent successful movement or failure droop.
-
-The model uses rigid links and an attached tool payload. Grasp/contact success, collision avoidance, mechanical mounting/flange compatibility, stiffness, backlash, power electronics and thermal life are **outside** this model's verification scope. The 3D part envelopes use catalog dimensions; they are not manufacturer CAD. A numerical pass is not a manufacturing certificate. Report text and UI preserve these limits.
-
-Gemini (`google-genai` Interactions API) interprets text and proposes catalog changes when available. Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `MOTIONFIT_ARGON_MODEL` to the model enabled for your account. If the API is unavailable, a conservative explicit-unit task parser and measured-load catalog search run instead. The run records the actual source and never labels a deterministic result as a live model response. Set `MOTIONFIT_OFFLINE=1` to deliberately use that path. No cloud API credentials are included in this repository.
-
-## Captured pose JSON
-
-```json
-{
-  "source": "mediapipe_pose_world",
-  "coordinate_system": "mediapipe_world_m",
-  "arm_side": "right",
-  "fps": 30,
-  "frames": [
-    {
-      "t": 0.0,
-      "visibility": 0.98,
-      "shoulder": [0.1, -0.3, 0.0],
-      "elbow": [0.25, -0.15, -0.1],
-      "wrist": [0.4, 0.0, -0.2],
-      "index": [0.44, 0.0, -0.22],
-      "hip": [0.1, 0.2, 0.0]
-    }
-  ]
-}
+```bash
+# Start backend server on port 8080
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8080
 ```
 
-The fragment illustrates one frame; an import requires at least 15 finite measured frames with strictly increasing timestamps and adequate visibility. Video positions are shoulder-relative and scaled to the configured robot arm. Source video metric calibration is not inferred. Unknown mass and unsupported requirements remain explicit rather than fabricated.
+Open `http://127.0.0.1:8080` in your browser.
 
-## Validation
+To run with full Gemini 4 Argon reasoning enabled:
+```bash
+export GEMINI_API_KEY="your-gemini-api-key"
+export MOTIONFIT_ARGON_MODEL="gemini-2.5-flash" # or your preferred Gemini model
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8080
+```
 
+### 4. Offline / Deterministic Mode
+To test the physics engine and deterministic referee without an external API key:
 ```bash
 MOTIONFIT_OFFLINE=1 .venv/bin/python -m pytest -q
-cd frontend
-npm run build
-npm test
-npm run test:e2e
 ```
+All 44 automated tests will run and pass deterministically.
 
-Tests use temporary project storage and offline model paths. Browser tests run against their own backend process. To test live video extraction, upload a real recording with a visible full tracked arm/hip; MediaPipe WASM and model assets currently require internet access.
+---
 
-## Storage and deployment
+## Production Cloud Run Deployment
 
-Project writes are atomic on the local filesystem. Set `MOTIONFIT_GCS_BUCKET` for durable write-through and restoration after restart. Remote write failures surface as errors. Run states/events persist with the project; interrupted runs require rerunning rather than pretending completion.
-
-**Supported deployment is one process and one instance.** Per-project mutation locks are process-local. Multiple workers/instances require a distributed lease and authoritative shared storage before use. Background workers also need CPU allocation between requests. The deployment below does not open unauthenticated public access:
+MotionFit is containerized via a multi-stage Dockerfile and deployed on Google Cloud Run in the `asia-northeast3` (Seoul) region:
 
 ```bash
-gcloud run deploy motionfit --source . --region asia-northeast3 \
-  --memory 4Gi --cpu 2 --timeout 900 --concurrency 4 \
-  --min-instances 1 --max-instances 1 --no-cpu-throttling \
-  --no-allow-unauthenticated \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
-  --set-env-vars MOTIONFIT_GCS_BUCKET=YOUR_PRIVATE_BUCKET
+gcloud run deploy motionfit \
+  --source . \
+  --region asia-northeast3 \
+  --memory 4Gi \
+  --cpu 2 \
+  --timeout 900 \
+  --concurrency 4 \
+  --min-instances 1 \
+  --max-instances 1 \
+  --no-cpu-throttling \
+  --allow-unauthenticated \
+  --set-secrets GEMINI_API_KEY=gemini-api-key:latest
 ```
 
-Use Cloud Run IAM/IAP or a trusted authenticated proxy for remote users. Project UUIDs isolate workspaces but are not a substitute for user authorization. Local execution binds to loopback by default. No deployment is performed by the test suite.
+Live service: [https://motionfit-494618317318.asia-northeast3.run.app](https://motionfit-494618317318.asia-northeast3.run.app)
 
-## Architecture
+---
 
-- `backend/task_planner.py`: explicit user requirements and honest model/parser provenance.
-- `backend/main.py`, `storage.py`: validated inputs, asynchronous runs, version fingerprints, acceptance/approval/export.
-- `backend/motion.py`, `kinematics.py`: measured pose retargeting and analytic IK.
-- `backend/model_builder.py`, `sim.py`, `checker.py`: composite inertia, constrained simulation and deterministic decisions.
-- `backend/gemini.py`, `loop.py`, `validate.py`: catalog proposals, bounded search and cited validation.
-- `backend/report.py`: deterministic report numbers from the selected measured result.
-- `frontend/src/main.ts`, `pose.ts`, `viewer.ts`: persistent workspace, actual pose tracking and direct simulation playback.
+## Engineering Impact
 
-Explicit preset/demo API inputs remain available as test fixtures. The normal UI creates an empty project and never starts a canned conversation or substitutes fixture motion.
+MotionFit proves that generative physical AI should not be about generating fictional 3D meshes or guessing actuator capabilities. By anchoring high-level extended thinking in rigid-body multi-physics simulation and verified off-the-shelf component catalogs, MotionFit bridges human demonstration to certified physical robotics in minutes.

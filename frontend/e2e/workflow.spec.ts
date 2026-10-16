@@ -55,7 +55,7 @@ test('empty workspace, real input verification, measured replay, acceptance and 
   await expect(page.locator('#before-label')).toHaveText('Applied design · measured replay');
   await expect(page.locator('#chat-stream')).toContainText('Browser Regression Engineer');
   await page.locator('#constraints-panel').evaluate((el: HTMLDetailsElement) => el.open = true);
-  await page.locator('#payload').fill('20'); await page.locator('#prompt').fill('Increase payload to 20 kg.');
+  await page.locator('#prompt').fill('Increase payload to 20 kg.');
   await page.locator('#send').click();
   await expect(page.locator('#result-state')).toContainText('No passing design found', { timeout: 60000 });
   await expect(page.locator('#accept')).toBeDisabled();
@@ -81,4 +81,19 @@ test('mobile workspace exposes the task controls without horizontal overflow', a
   await expect(page.locator('#prompt')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/mobile-workspace.png', fullPage: true });
+});
+
+test('video without a detected person never creates a replacement target', async ({ page, request }) => {
+
+  await page.goto('/');
+  await page.locator('#payload').fill('0.5');
+  await page.locator('#input-video-file').setInputFiles('e2e/fixtures/no-person.mp4');
+  await page.locator('#prompt').fill('Move my recorded object with payload 0.5 kg.');
+  await page.locator('#send').click();
+  await expect(page.locator('#chat-stream')).toContainText('Could not complete this action', { timeout: 30000 });
+  const id = await page.locator('#project-name').textContent();
+  const project = await (await request.get(`/api/projects/${id}`)).json();
+  expect(project.landmarks).toBeNull(); expect(project.target).toBeNull(); expect(project.loop_result).toBeNull();
+  await expect(page.locator('#run')).toBeDisabled();
+  await expect(page.locator('#chat-stream')).not.toContainText('Skeleton Tracked');
 });

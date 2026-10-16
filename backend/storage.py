@@ -120,6 +120,15 @@ def create_project(use_demo: bool = False, design: Optional[Dict[str, Any]] = No
         seed_design["constraints"].update(max_cost_usd=1e9, max_total_mass_kg=1e9, min_reach_m=0.0)
     save_json(project_id, "design.json", seed_design)
     catalog = json.loads((DEMO_DIR / "catalog.json").read_text())
+    if not use_demo:
+        # These legacy reference models lack primary vendor evidence. Keep them
+        # in explicit demonstration fixtures, never offer them as real hardware.
+        excluded = {"APEX-PG20-2", "APEX-PG20-3"}
+        catalog["excluded_reference_parts"] = [
+            {"part_id": part["part_id"], "reason": "Exact model not verified in primary vendor sources"}
+            for part in catalog.get("parts", []) if part.get("part_id") in excluded
+        ]
+        catalog["parts"] = [part for part in catalog.get("parts", []) if part.get("part_id") not in excluded]
     catalog["confirmed"] = False
     catalog["spot_check_passed"] = False
     catalog["provenance"] = {"source": "bundled_reference_catalog", "documents": "locally_generated_reference_sheets", "manufacturer_originals": False, "notice": "Bundled values and generated reference PDFs require user review. Derived continuous torque and reference prices are estimates; generated PDFs are not manufacturer originals."}
@@ -128,6 +137,8 @@ def create_project(use_demo: bool = False, design: Optional[Dict[str, Any]] = No
     save_json(project_id, "catalog.json", catalog)
     if (DEMO_DIR / "datasheets").exists():
         for src in (DEMO_DIR / "datasheets").iterdir():
+            if not use_demo and src.stem.upper() in excluded:
+                continue
             if src.is_file() and src.suffix.lower() in (".pdf", ".csv"):
                 save_bytes(project_id, f"datasheets/{src.name}", src.read_bytes(), "application/pdf" if src.suffix.lower() == ".pdf" else "text/csv")
     prices = DEMO_DIR / "prices.csv"

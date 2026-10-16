@@ -1,0 +1,10 @@
+import { copyFile, mkdir, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+const root = new URL('../', import.meta.url);
+const source = new URL('node_modules/@mediapipe/tasks-vision/wasm/', root);
+const output = new URL('public/vision/wasm/', root);
+await mkdir(output, { recursive: true });
+for (const name of await readdir(source)) if (/\.(js|wasm)$/.test(name)) await copyFile(new URL(name, source), new URL(name, output));
+const model = await readFile(new URL('public/vision/pose_landmarker_lite.task', root));
+if (createHash('sha256').update(model).digest('hex') !== '59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a') throw new Error('Pose model asset checksum mismatch.');
+console.log('Prepared locally served MediaPipe runtime and model.');

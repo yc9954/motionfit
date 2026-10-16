@@ -9,7 +9,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare:vision": "node scripts/prepare-vision.mjs",
+    "prebuild": "npm run prepare:vision",
+    "predev": "npm run prepare:vision"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "0.10.17",
@@ -19,6 +22,6 @@
     "@playwright/test": "^1.64.1",
     "@types/three": "0.182.0",
     "typescript": "5.9.3",
-    "vite": "6.3.5"
+    "vite": "6.4.4"
   }
 }

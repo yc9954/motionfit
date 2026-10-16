@@ -12,3 +12,8 @@ static/
 tmp_projects/
 frontend/test-results/
 .playwright/
+
+frontend/public/vision/wasm/
+frontend/playwright-report/
+backend/data/projects/proj-*/
+backend/data/projects/*/run-*.json

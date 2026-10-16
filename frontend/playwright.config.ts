@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
-  testDir: './e2e', timeout: 90000, workers: 1, fullyParallel: false,
+  testDir: './e2e', timeout: 90000, expect: { timeout: 15000 }, workers: 1, fullyParallel: false,
   use: { baseURL: 'http://127.0.0.1:8092', headless: true, viewport: { width: 1440, height: 1000 },
     launchOptions: { channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
     screenshot: 'only-on-failure', trace: 'retain-on-failure',

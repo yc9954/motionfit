@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+.pytest_cache
+frontend/node_modules
+frontend/test-results
+frontend/playwright-report
+static
+backend/data/projects
+sample_videos
+*.mp4
+.env
+*.log
+.DS_Store

@@ -173,6 +173,7 @@ def run_design_loop(
             "thought_summary": None,
             "validation": None,
             "proposal_source": None,
+            "simulation_scope": sim_res.get("simulation_scope", {}),
             "elapsed_s": round(time.time() - t_iter_start, 3),
         }
         iterations.append(iter_record)
@@ -383,7 +384,7 @@ def run_design_loop(
         "iterations": iterations,
         "naive_baseline": naive_baseline,
         "selected_iteration": best_iter["iteration"],
-        "verification_scope": best_iter.get("verification_scope", sim_res.get("verification_scope", {})),
+        "simulation_scope": best_iter.get("simulation_scope", {}),
         "search_status": "passing_candidate_found" if best_iter["check"]["passed"] else "bounded_search_without_passing_candidate",
     }
 

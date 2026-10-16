@@ -241,3 +241,23 @@ def test_constrained_tool_orientation_is_verified_on_actual_simulation():
     judged = evaluate_design(metrics, current, ik_result={"unclamped_fraction": 1})
     assert not judged["passed"]
     assert [v["check"] for v in judged["violations"]] == ["tool_orientation"]
+
+
+def test_normal_projects_exclude_unverified_reference_gearboxes(monkeypatch, tmp_path):
+    from backend import storage
+    monkeypatch.setattr(storage, "PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(storage, "_gcs_bucket", lambda: None)
+    normal = storage.create_project(use_demo=False)
+    catalog = storage.load_json(normal, "catalog.json")
+    ids = {p["part_id"] for p in catalog["parts"]}
+    assert not {"APEX-PG20-2", "APEX-PG20-3"} & ids
+    assert not (storage.get_project_dir(normal) / "datasheets" / "apex-pg20-2.pdf").exists()
+    assert {p["part_id"] for p in catalog["excluded_reference_parts"]} == {"APEX-PG20-2", "APEX-PG20-3"}
+    xl = next(p for p in catalog["parts"] if p["part_id"] == "XL430-W250")
+    assert xl["stall_torque_nm"]["value"] == 1.5
+    assert xl["continuous_torque_nm"]["value"] == 0.495
+    assert xl["continuous_torque_nm"]["derived"] is True
+    assert xl["source_verification"]["primary_source_url"] == "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+    demo = storage.create_project(use_demo=True)
+    demo_catalog = storage.load_json(demo, "catalog.json")
+    assert {"APEX-PG20-2", "APEX-PG20-3"} <= {p["part_id"] for p in demo_catalog["parts"]}

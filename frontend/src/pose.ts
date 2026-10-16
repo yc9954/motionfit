@@ -166,10 +166,10 @@ export async function extractLandmarksFromVideoFile(
     const ctx = overlayCanvas?.getContext("2d");
     onProgress?.(2, "Loading MediaPipe pose model…");
     const vision = await import("@mediapipe/tasks-vision");
-    const fileset = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm");
+    const fileset = await vision.FilesetResolver.forVisionTasks("/vision/wasm");
     abortIfNeeded(signal);
     detector = await vision.PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task" },
+      baseOptions: { modelAssetPath: "/vision/pose_landmarker_lite.task" },
       runningMode: "VIDEO",
       numPoses: 1,
       minPoseDetectionConfidence: 0.5,

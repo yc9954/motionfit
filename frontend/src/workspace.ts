@@ -28,6 +28,7 @@ let progress = "Describe your task and attach a motion video.";
 let activeEventSource: EventSource | null = null;
 let alive = true;
 let activeAbort: AbortController | null = null;
+const dirtyConstraints = new Set<string>();
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const escape = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -73,6 +74,11 @@ function setBusy(value: boolean) {
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   setProgress("Action failed. Review the error in the conversation.");
+  document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => {
+    let alert = dialog.querySelector<HTMLElement>(".dialog-error");
+    if (!alert) { alert = document.createElement("p"); alert.className = "dialog-error"; alert.setAttribute("role", "alert"); dialog.querySelector(".dialog-header")?.after(alert); }
+    alert.textContent = message;
+  });
   say("agent", `Could not complete this action: ${message}\nNo replacement motion or successful result was generated.`);
 }
 function runAction(action: () => Promise<void>) {
@@ -120,10 +126,12 @@ app.innerHTML = `
 <dialog id="report-dialog"><div class="dialog-header"><h2>Verification report</h2><a id="report-tab" target="_blank" rel="noopener">Open in new tab ↗</a><button data-close="report-dialog">✕</button></div><iframe id="report-frame" title="Engineering verification report"></iframe></dialog>`;
 
 function constraints() {
-  const values: Record<string, number> = {};
+  const values: Record<string, number | null> = {};
   for (const [id, key] of [["payload", "payload_kg"], ["budget", "max_cost_usd"], ["mass", "max_total_mass_kg"], ["reach", "min_reach_m"]]) {
+    if (!dirtyConstraints.has(id)) continue;
     const raw = $<HTMLInputElement>(id).value.trim();
     if (raw !== "") { const value = Number(raw); if (!Number.isFinite(value) || value < 0) throw new Error(`Invalid ${key}.`); values[key] = value; }
+    else values[key] = null;
   }
   return values;
 }
@@ -142,7 +150,10 @@ async function submitTask() {
   await refreshProject();
   const task = taskResult.task || project?.task || {};
   say("agent", `${task.summary || task.task_summary || "Task recorded."}\nInput interpretation: ${task.interpretation_source || "user constraints"}.${task.interpretation_notice ? `\n${task.interpretation_notice}` : ""}${task.assumptions?.length ? `\nAssumptions to review:\n${task.assumptions.join("\n")}` : ""}`);
-  if (task.orientation_constraint) $<HTMLSelectElement>("orientation").value = task.orientation_constraint;
+  const requirement = task.constraints || {};
+  for (const [id, key] of [["payload", "payload_kg"], ["budget", "max_cost_usd"], ["mass", "max_total_mass_kg"], ["reach", "min_reach_m"]]) $<HTMLInputElement>(id).value = requirement[key] == null ? "" : String(requirement[key]);
+  dirtyConstraints.clear();
+  say("agent", `Conditions used for verification: payload ${requirement.payload_kg == null ? "required" : `${num(requirement.payload_kg, 3)} kg`}; budget ${requirement.max_cost_usd == null ? "unconstrained" : `$${num(requirement.max_cost_usd)}`}; maximum arm mass ${requirement.max_total_mass_kg == null ? "unconstrained" : `${num(requirement.max_total_mass_kg, 3)} kg`}; minimum reach ${requirement.min_reach_m == null ? "unconstrained" : `${num(requirement.min_reach_m, 3)} m`}; orientation ${task.orientation_constraint}.`);
   rebuildViewers();
   if (selectedFile) {
     setProgress("Detecting actual arm landmarks in your recording…");
@@ -271,6 +282,7 @@ function renderResult() {
   if (!result) { $("metrics").innerHTML = ""; refreshActions(); return; }
   const initial = result.initial_metrics; const final = result.final_metrics;
   $("metrics").innerHTML = [["Path error", `${num(initial.ee_rmse_mm)} → ${num(final.ee_rmse_mm)} mm`], ["Arm mass", `${num(initial.total_mass_kg, 3)} → ${num(final.total_mass_kg, 3)} kg`], ["Catalog cost", `$${num(initial.total_cost_usd)} → $${num(final.total_cost_usd)}`]].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+  if (final.orientation_mode && final.orientation_mode !== "free") $("metrics").insertAdjacentHTML("beforeend", `<div><span>Max tool orientation error</span><strong>${num(final.tool_pitch_max_error_deg)}°</strong></div>`);
   const selected = result.iterations?.find((i: any) => i.design_id === result.final_design.design_id);
   const changes: string[] = [];
   for (const joint of ["J1", "J2", "J3", "J4"]) {
@@ -339,14 +351,16 @@ async function openCatalog() {
 }
 
 $("chat-form").addEventListener("submit", event => { event.preventDefault(); runAction(submitTask); });
+for (const id of ["payload", "budget", "mass", "reach"]) $(id).addEventListener("input", () => dirtyConstraints.add(id));
 $("prompt").addEventListener("keydown", event => { if ((event as KeyboardEvent).key === "Enter" && !(event as KeyboardEvent).shiftKey) { event.preventDefault(); $<HTMLFormElement>("chat-form").requestSubmit(); } });
 $("chat-stream").addEventListener("scroll", () => { const el = $("chat-stream"); followChat = el.scrollHeight - el.scrollTop - el.clientHeight < 90; });
 $("catalog-label").addEventListener("click", () => runAction(openCatalog));
 $("confirm-catalog").addEventListener("click", () => runAction(async () => {
   const catalog = JSON.parse($<HTMLTextAreaElement>("catalog-json").value);
   if (!Array.isArray(catalog.parts) || !catalog.parts.length) throw new Error("Catalog must contain a nonempty parts array.");
-  await request(apiPath("/catalog"), "PUT", catalog); await refreshProject();
+  const review = await request(apiPath("/catalog"), "PUT", catalog); await refreshProject();
   $<HTMLDialogElement>("catalog-dialog").close(); say("agent", "Saved your reviewed catalog. Previous verification and approval were invalidated. Click Verify motion to test these parts against the recorded target.");
+  if (review.baseline_changes?.length) say("agent", `${review.baseline_notice}\n${review.baseline_changes.map((c: any) => `${c.joint}: ${c.from} → ${c.to}`).join("\n")}`);
   resultIdentity = ""; rebuildViewers(); $("metrics").innerHTML = "";
 }));
 $("catalog-file").addEventListener("change", async () => {
@@ -406,6 +420,7 @@ document.querySelectorAll<HTMLElement>("[data-close]").forEach(button => button.
 $("new-project").addEventListener("click", () => runAction(async () => {
   beforeViewer?.dispose(); afterViewer?.dispose(); beforeViewer = null; afterViewer = null;
   project = null; messages = []; resultIdentity = ""; accepted = false; candidateVisible = false; playing = false; runId = ""; sourceFile = null; overlayFrames = [];
+  dirtyConstraints.clear(); $<HTMLSelectElement>("orientation").value = "";
   if (sourceUrl) URL.revokeObjectURL(sourceUrl); sourceUrl = null;
   $<HTMLVideoElement>("source-video").removeAttribute("src"); $<HTMLVideoElement>("source-video").load(); $("video-wrap").hidden = true; $("source-empty").hidden = false; $("attachment").hidden = true;
   for (const id of ["payload", "budget", "mass", "reach", "prompt"]) ($<HTMLInputElement>(id)).value = "";
@@ -432,7 +447,6 @@ async function boot() {
       overlayFrames = project.landmarks?.overlayFrames || [];
       const c = project.task?.constraints || {};
       for (const [id, key] of [["payload", "payload_kg"], ["budget", "max_cost_usd"], ["mass", "max_total_mass_kg"], ["reach", "min_reach_m"]]) if (c[key] != null) $<HTMLInputElement>(id).value = String(c[key]);
-      if (project.task?.orientation_constraint) $<HTMLSelectElement>("orientation").value = project.task.orientation_constraint;
       refreshActions(); rebuildViewers(); renderMessages();
       if (project.landmarks) $("source-empty").textContent = "Captured pose data is saved. Reattach the original video for synchronized source playback; browsers do not persist local file access.";
       let pending: string | null = null; try { pending = localStorage.getItem(`motionfit.run.${project.project_id}`); } catch { /* optional */ }
