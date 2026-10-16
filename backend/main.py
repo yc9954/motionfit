@@ -167,8 +167,8 @@ async def api_process_motion(project_id: str, req: MotionRequest) -> Dict[str, A
         landmarks = req.landmarks
         preset_name = landmarks.get("preset", "custom")
     else:
-        preset_name = req.preset or "wipe"
-        if preset_name == "wipe" and (proj_dir / "landmarks.json").exists():
+        preset_name = req.preset or "water_bottle"
+        if preset_name in ("water_bottle", "wipe") and (proj_dir / "landmarks.json").exists():
             landmarks = load_json(project_id, "landmarks.json")
         else:
             landmarks = generate_preset_landmarks(preset_name=preset_name, links=design.get("links"))
@@ -176,7 +176,7 @@ async def api_process_motion(project_id: str, req: MotionRequest) -> Dict[str, A
     save_json(project_id, "landmarks.json", landmarks)
 
     motion_summary = summarize_motion(landmarks)
-    if preset_name == "wipe" and (proj_dir / "intent.json").exists() and req.landmarks is None and req.orientation_constraint is None:
+    if preset_name in ("water_bottle", "wipe") and (proj_dir / "intent.json").exists() and req.landmarks is None and req.orientation_constraint is None:
         intent = load_json(project_id, "intent.json")
     else:
         intent = analyze_motion_intent(landmarks_summary=motion_summary)

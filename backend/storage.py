@@ -132,6 +132,7 @@ def get_project_state(project_id: str) -> Dict[str, Any]:
     for key, fname in [
         ("design", "design.json"),
         ("catalog", "catalog.json"),
+        ("landmarks", "landmarks.json"),
         ("target", "target.json"),
         ("intent", "intent.json"),
         ("loop_result", "loop_result.json"),

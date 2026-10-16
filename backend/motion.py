@@ -201,10 +201,10 @@ def generate_preset_landmarks(
     for t in t_arr:
         u = t / duration_s  # normalized time [0, 1]
 
-        if preset_name in ("wipe", "wipe_and_lift", "demo"):
-            # Phase 1 [0.0 - 0.35]: Surface wipe at compact reach (high q2, upward forearm q2+q3 ~ 0.85 rad)
-            # Phase 2 [0.35 - 0.65]: Fast extended horizontal reach & lift (q2 drops to ~0.05 rad, full moment arm)
-            # Phase 3 [0.65 - 1.0]: High shelf placement and return to compact posture
+        if preset_name in ("water_bottle", "wipe", "wipe_and_lift", "demo"):
+            # Phase 1 [0.0 - 0.25]: Reach & grasp 500 mL water bottle at Pickup Station A
+            # Phase 2 [0.25 - 0.72]: Extended upright lift & arc transfer across workspace (q2 drops to ~0.36 rad, peak moment arm)
+            # Phase 3 [0.72 - 1.0]: Place water bottle onto Target Station B coaster and release
             q1 = 0.35 * math.sin(2.0 * math.pi * u)
             lift_bell = math.exp(-((u - 0.50) / 0.165) ** 2)
             q2 = 1.32 - 0.96 * lift_bell + 0.02 * math.sin(4.0 * math.pi * u)

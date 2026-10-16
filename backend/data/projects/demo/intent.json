@@ -1,39 +1,40 @@
 {
-  "task_summary": "Wipe a laboratory workbench surface from left to right, then lift a 400 g payload container at full horizontal extension and place it onto an elevated shelf.",
+  "task_summary": "Reach and grasp a filled 500 mL water bottle (0.4 kg payload) from Pickup Station A, lift and transfer it upright across the workspace at full horizontal extension, and place it onto Target Station B without spilling.",
   "active_arm": "right",
+  "orientation_constraint": "keep_upright",
   "phases": [
     {
-      "name": "surface_wipe",
+      "name": "approach_and_grasp",
       "t_start": 0.0,
-      "t_end": 2.1,
-      "description": "Horizontal sweeping motion across the lower bench surface at moderate reach.",
-      "dominant_load": "steady_gravity_and_yaw_sweep"
+      "t_end": 1.5,
+      "description": "Reach from home posture to Pickup Station A and close parallel gripper fingers around the 500 mL water bottle.",
+      "dominant_load": "moderate_gravity_and_approach_positioning"
     },
     {
-      "name": "fast_extended_lift",
-      "t_start": 2.1,
-      "t_end": 3.9,
-      "description": "Rapid upward lift while arm extends forward to maximum moment arm with 0.4 kg payload.",
+      "name": "extended_bottle_lift_and_transfer",
+      "t_start": 1.5,
+      "t_end": 4.3,
+      "description": "Lift and carry the 0.4 kg water bottle upright across a full-extension arc (moment arm ~0.61 m) toward Target Station B.",
       "dominant_load": "peak_shoulder_pitch_gravity_plus_inertial_torque"
     },
     {
-      "name": "shelf_place_and_return",
-      "t_start": 3.9,
+      "name": "place_bottle_and_release",
+      "t_start": 4.3,
       "t_end": 6.0,
-      "description": "Controlled placement at upper shelf height followed by retraction to home pose.",
+      "description": "Controlled placement of the water bottle onto Target Station B coaster, gripper release, and retraction.",
       "dominant_load": "deceleration_and_holding_torque"
     }
   ],
   "critical_moments": [
     {
-      "t_s": 3.12,
-      "phase": "fast_extended_lift",
-      "reason": "Maximum horizontal moment arm (~0.61 m) combined with upward angular acceleration creates peak J2 shoulder pitch torque demand."
+      "t_s": 3.00,
+      "phase": "extended_bottle_lift_and_transfer",
+      "reason": "Maximum horizontal moment arm (~0.61 m) while carrying the 0.4 kg water bottle upright creates peak J2 shoulder pitch torque demand (3.11 N·m required, ratio 1.13 > 0.80 limit)."
     },
     {
-      "t_s": 2.65,
-      "phase": "fast_extended_lift",
-      "reason": "Simultaneous J2 upward pitch velocity and high gravity load pushes J2 actuator along its torque-speed derating curve."
+      "t_s": 2.55,
+      "phase": "extended_bottle_lift_and_transfer",
+      "reason": "Simultaneous J2 upward lift velocity and bottle gravity load pushes XM430-W350 beyond its torque-speed boundary and 1.35 N·m continuous thermal rating (RMS ratio 1.73)."
     }
   ]
 }

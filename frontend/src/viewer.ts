@@ -1,8 +1,9 @@
 /**
- * CAD/CAE 3D Robot Arm Viewer (Three.js)
+ * CAD/CAE 3D Robot Arm & Water-Bottle Pick-and-Transfer Simulation Viewer (Three.js)
  * Models the 4-DOF serial robot arm with sculpted metallic/anodized joint housings,
  * industrial base controller cabinet, chamfered link shells, translucent blue wireframe
- * joint-axis cylinders, and glowing green curved rotation/torque arrows at every joint.
+ * joint-axis cylinders, glowing green curved rotation/torque arrows, 2-finger parallel gripper,
+ * Pickup/Target stations, and a 3D 500 mL water bottle payload.
  */
 
 import * as THREE from "three";
@@ -59,6 +60,12 @@ interface JointVisualHandles {
 
 interface RobotRig {
   root: THREE.Group;
+  baseGroup: THREE.Group;
+  upperArmGroup: THREE.Group;
+  forearmGroup: THREE.Group;
+  wristGripperGroup: THREE.Group;
+  leftFinger: THREE.Mesh | null;
+  rightFinger: THREE.Mesh | null;
   joints: Record<"J1" | "J2" | "J3" | "J4", JointVisualHandles>;
 }
 
@@ -69,7 +76,6 @@ function getActuatorVisualScale(actuatorId: string): { radius: number; length: n
     return { radius: 0.039, length: 0.082 };
   if (id.startsWith("XM540") || id.startsWith("XH540")) return { radius: 0.035, length: 0.074 };
   if (id.startsWith("XL430") || id.startsWith("XC330")) return { radius: 0.026, length: 0.056 };
-  // Default XM430-W350 / XH430 class
   return { radius: 0.031, length: 0.064 };
 }
 
@@ -84,8 +90,6 @@ function createCurvedRotationArrow(
   mat: THREE.Material
 ): THREE.Group {
   const group = new THREE.Group();
-
-  // Build curve in XZ plane (around Y axis)
   const segments = 28;
   const points: THREE.Vector3[] = [];
   for (let i = 0; i <= segments; i++) {
@@ -97,7 +101,6 @@ function createCurvedRotationArrow(
   const tubeMesh = new THREE.Mesh(tubeGeo, mat);
   group.add(tubeMesh);
 
-  // Conical arrowhead at end of arc
   const endTheta = startAngle + arcAngle;
   const endPos = new THREE.Vector3(arcRadius * Math.cos(endTheta), 0, arcRadius * Math.sin(endTheta));
   const tangent = new THREE.Vector3(-Math.sin(endTheta), 0, Math.cos(endTheta)).normalize();
@@ -114,18 +117,15 @@ function createCurvedRotationArrow(
 }
 
 /**
- * Create the translucent blue wireframe joint-axis cylinder + glowing green curved torque arrows
- * matching the CAD reference aesthetic.
+ * Create the translucent blue wireframe joint-axis cylinder + glowing green curved torque arrows.
  */
 function createJointAxisCadOverlay(
   axisRadius: number,
   axisLength: number,
   arrowMaterial: THREE.MeshStandardMaterial
 ): { group: THREE.Group; arrowMeshes: THREE.Mesh[] } {
-  // Cylinder default in Three.js is aligned along Y axis
   const group = new THREE.Group();
 
-  // 1. Translucent cyan-blue inner cylinder
   const cylGeo = new THREE.CylinderGeometry(axisRadius, axisRadius, axisLength, 24, 4, false);
   const cylFillMat = new THREE.MeshPhysicalMaterial({
     color: 0x38bdf8,
@@ -141,7 +141,6 @@ function createJointAxisCadOverlay(
   const cylFill = new THREE.Mesh(cylGeo, cylFillMat);
   group.add(cylFill);
 
-  // 2. Crisp blue wireframe cage around the cylinder
   const wireGeo = new THREE.CylinderGeometry(axisRadius * 1.01, axisRadius * 1.01, axisLength, 16, 3, false);
   const wireMat = new THREE.MeshBasicMaterial({
     color: 0x60a5fa,
@@ -153,7 +152,6 @@ function createJointAxisCadOverlay(
   const wireMesh = new THREE.Mesh(wireGeo, wireMat);
   group.add(wireMesh);
 
-  // 3. End-ring glowing circles on both ends of the axis cylinder
   const ringGeo = new THREE.RingGeometry(axisRadius * 0.82, axisRadius * 1.04, 32);
   const ringMat = new THREE.MeshBasicMaterial({
     color: 0x7dd3fc,
@@ -171,7 +169,6 @@ function createJointAxisCadOverlay(
   botRing.position.y = -axisLength / 2;
   group.add(botRing);
 
-  // 4. Two symmetric glowing green curved rotation/torque arrows wrapping around the axis
   const arrowMeshes: THREE.Mesh[] = [];
   const arcR = axisRadius * 1.38;
   const tubeR = Math.max(0.0028, axisRadius * 0.13);
@@ -206,7 +203,6 @@ function createSculptedLinkShell(
   const linkGroup = new THREE.Group();
   const effectiveLen = Math.max(0.03, lengthM);
 
-  // Main structural chamfered tube along X axis
   const mainGeo = new THREE.CylinderGeometry(radiusM * 0.95, radiusM * 1.05, effectiveLen, 24);
   mainGeo.rotateZ(-Math.PI / 2);
   mainGeo.translate(effectiveLen / 2, 0, 0);
@@ -216,7 +212,6 @@ function createSculptedLinkShell(
   linkGroup.add(mainMesh);
 
   if (!isGhost) {
-    // Upper and lower sculpted reinforcement rails (gives the CAD industrial arm shell profile)
     const railLen = Math.max(0.02, effectiveLen * 0.76);
     const railGeo = new THREE.BoxGeometry(railLen, radiusM * 1.48, radiusM * 1.85);
     const railMesh = new THREE.Mesh(railGeo, shellMat);
@@ -224,13 +219,11 @@ function createSculptedLinkShell(
     railMesh.castShadow = true;
     linkGroup.add(railMesh);
 
-    // Dark recessed side channel inlay strips
     const inlayGeo = new THREE.BoxGeometry(railLen * 0.86, radiusM * 1.56, radiusM * 0.62);
     const inlayMesh = new THREE.Mesh(inlayGeo, darkInlayMat);
     inlayMesh.position.set(effectiveLen * 0.5, 0, 0);
     linkGroup.add(inlayMesh);
 
-    // End collar rings near proximal & distal joints
     const collarGeo = new THREE.CylinderGeometry(radiusM * 1.25, radiusM * 1.25, 0.014, 24);
     collarGeo.rotateZ(-Math.PI / 2);
     const c1 = new THREE.Mesh(collarGeo, darkInlayMat);
@@ -267,13 +260,11 @@ function createJointHousingAssembly(
 } {
   const assembly = new THREE.Group();
 
-  // Inner group is built along Y axis; if axisAlignedWithZ is true (for J1), rotate X by +90 deg
   const yAligned = new THREE.Group();
   if (axisAlignedWithZ) {
     yAligned.rotation.x = Math.PI / 2;
   }
 
-  // Main brushed metallic cylinder
   const bodyGeo = new THREE.CylinderGeometry(actRadius, actRadius, actLength, 32);
   const housingMesh = new THREE.Mesh(bodyGeo, silverMat);
   housingMesh.castShadow = !isGhost;
@@ -281,7 +272,6 @@ function createJointHousingAssembly(
   yAligned.add(housingMesh);
 
   if (!isGhost) {
-    // Dark anodized end caps (top and bottom of cylinder)
     const capHeight = actLength * 0.18;
     const capGeo = new THREE.CylinderGeometry(actRadius * 0.96, actRadius * 1.02, capHeight, 32);
     const topCap = new THREE.Mesh(capGeo, darkCapMat);
@@ -292,20 +282,20 @@ function createJointHousingAssembly(
     botCap.position.y = -(actLength * 0.5 + capHeight * 0.4);
     yAligned.add(botCap);
 
-    // Status LED / torque indicator collar ring
     const ringGeo = new THREE.CylinderGeometry(actRadius * 1.04, actRadius * 1.04, 0.008, 32);
     const ringMesh = new THREE.Mesh(ringGeo, accentMat);
     ringMesh.position.y = actLength * 0.22;
     yAligned.add(ringMesh);
 
-    // If an external inline planetary gearbox (e.g., APEX-PG20-2) is mounted, render coaxial stage
     if (hasGearbox && gearboxId) {
-      const gbLen = 0.032;
-      const gbGeo = new THREE.CylinderGeometry(actRadius * 0.88, actRadius * 0.88, gbLen, 28);
+      const gbLen = 0.034;
+      const gbGeo = new THREE.CylinderGeometry(actRadius * 0.92, actRadius * 0.92, gbLen, 28);
       const gbMat = new THREE.MeshStandardMaterial({
-        color: 0x0284c7,
-        metalness: 0.78,
-        roughness: 0.22,
+        color: 0x0ea5e9,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.28,
+        metalness: 0.82,
+        roughness: 0.18,
       });
       const gbMesh = new THREE.Mesh(gbGeo, gbMat);
       gbMesh.position.y = actLength * 0.5 + capHeight + gbLen * 0.45;
@@ -313,7 +303,6 @@ function createJointHousingAssembly(
     }
   }
 
-  // Create CAD joint-axis cylinder + green rotation arrows
   const arrowMat = new THREE.MeshStandardMaterial({
     color: 0x22c55e,
     emissive: 0x16a34a,
@@ -341,10 +330,142 @@ function createJointHousingAssembly(
 }
 
 /**
+ * Create a realistic 3D 500 mL Water Bottle in Z-up coordinates.
+ * Origin (0,0,0) of the returned group is at the bottle neck grasp point so it aligns with ee_act / ee_des.
+ */
+function createWaterBottleModel(isGhost: boolean): THREE.Group {
+  const bottle = new THREE.Group();
+  // In Z-up, cylinder default is Y-aligned, so rotateX(Math.PI / 2) makes it vertical along Z.
+  const zAligned = new THREE.Group();
+  zAligned.rotation.x = Math.PI / 2;
+  // Shift down slightly so origin (0,0,0) is around the upper neck/shoulder grasp zone
+  zAligned.position.z = -0.032;
+
+  if (isGhost) {
+    const ghostGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.125, 16);
+    const ghostMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.42,
+    });
+    const mesh = new THREE.Mesh(ghostGeo, ghostMat);
+    zAligned.add(mesh);
+    bottle.add(zAligned);
+    return bottle;
+  }
+
+  // 1. Clear PET outer shell
+  const bodyGeo = new THREE.CylinderGeometry(0.023, 0.023, 0.088, 28);
+  const petMat = new THREE.MeshPhysicalMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.48,
+    roughness: 0.12,
+    metalness: 0.05,
+    clearcoat: 1.0,
+  });
+  const bodyMesh = new THREE.Mesh(bodyGeo, petMat);
+  bodyMesh.position.y = -0.012;
+  bodyMesh.castShadow = true;
+  zAligned.add(bodyMesh);
+
+  // 2. Internal liquid water column (500 mL aqua blue)
+  const waterGeo = new THREE.CylinderGeometry(0.021, 0.021, 0.072, 24);
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x0ea5e9,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.35,
+    transparent: true,
+    opacity: 0.85,
+    roughness: 0.2,
+  });
+  const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+  waterMesh.position.y = -0.018;
+  zAligned.add(waterMesh);
+
+  // 3. Bottle label band
+  const labelGeo = new THREE.CylinderGeometry(0.0236, 0.0236, 0.026, 28);
+  const labelMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    roughness: 0.35,
+    metalness: 0.1,
+  });
+  const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+  labelMesh.position.y = -0.008;
+  zAligned.add(labelMesh);
+
+  // 4. Tapered bottle neck
+  const neckGeo = new THREE.CylinderGeometry(0.0095, 0.0225, 0.026, 24);
+  const neckMesh = new THREE.Mesh(neckGeo, petMat);
+  neckMesh.position.y = 0.044;
+  zAligned.add(neckMesh);
+
+  // 5. Royal blue bottle cap
+  const capGeo = new THREE.CylinderGeometry(0.0108, 0.0108, 0.012, 24);
+  const capMat = new THREE.MeshStandardMaterial({
+    color: 0x2563eb,
+    emissive: 0x1d4ed8,
+    emissiveIntensity: 0.3,
+    roughness: 0.25,
+  });
+  const capMesh = new THREE.Mesh(capGeo, capMat);
+  capMesh.position.y = 0.062;
+  zAligned.add(capMesh);
+
+  bottle.add(zAligned);
+  return bottle;
+}
+
+/**
+ * Create a workspace station pedestal + glowing coaster pad from Z = 0 up to targetZ.
+ */
+function createStationPedestal(x: number, y: number, bottleBottomZ: number, accentHex: number): THREE.Group {
+  const group = new THREE.Group();
+  const h = Math.max(0.015, bottleBottomZ);
+
+  // Vertical support column
+  const colGeo = new THREE.CylinderGeometry(0.014, 0.018, h, 20);
+  colGeo.rotateX(Math.PI / 2);
+  const colMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    metalness: 0.6,
+    roughness: 0.4,
+    transparent: true,
+    opacity: 0.72,
+  });
+  const colMesh = new THREE.Mesh(colGeo, colMat);
+  colMesh.position.set(x, y, h * 0.5);
+  group.add(colMesh);
+
+  // Glowing top coaster pad
+  const padGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.006, 32);
+  padGeo.rotateX(Math.PI / 2);
+  const padMat = new THREE.MeshStandardMaterial({
+    color: accentHex,
+    emissive: accentHex,
+    emissiveIntensity: 0.45,
+    metalness: 0.4,
+    roughness: 0.3,
+  });
+  const padMesh = new THREE.Mesh(padGeo, padMat);
+  padMesh.position.set(x, y, h);
+  group.add(padMesh);
+
+  return group;
+}
+
+/**
  * Build the complete 4-DOF serial robot rig in Z-up coordinates.
  */
 function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   const root = new THREE.Group();
+  const baseGroup = new THREE.Group();
+  const upperArmGroup = new THREE.Group();
+  const forearmGroup = new THREE.Group();
+  const wristGripperGroup = new THREE.Group();
+
+  root.add(baseGroup);
 
   const baseH = design.links.base_height_m || 0.12;
   const L1 = design.links.upper_arm_m || 0.3;
@@ -354,12 +475,11 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   const isWideTube = (design.links.tube_profile || "").includes("30x2");
   const linkRadius = isWideTube ? 0.022 : 0.019;
 
-  // Materials
   const silverShellMat = isGhost
     ? new THREE.MeshStandardMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.18,
+        opacity: 0.16,
         roughness: 0.4,
         depthWrite: false,
       })
@@ -385,36 +505,32 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
         roughness: 0.38,
       });
 
-  // 0. Base Controller Cabinet & Pedestal (matches reference photo's floor controller unit)
+  // 0. Base Controller Cabinet & Pedestal
   if (!isGhost) {
-    // Rectangular industrial controller box behind the base pedestal
     const ctrlBoxGeo = new THREE.BoxGeometry(0.15, 0.21, 0.068);
     const ctrlBoxMesh = new THREE.Mesh(ctrlBoxGeo, darkSlateMat);
     ctrlBoxMesh.position.set(-0.135, -0.02, 0.034);
     ctrlBoxMesh.castShadow = true;
     ctrlBoxMesh.receiveShadow = true;
-    root.add(ctrlBoxMesh);
+    baseGroup.add(ctrlBoxMesh);
 
-    // Brushed metallic top plate on controller box
     const topPlateGeo = new THREE.BoxGeometry(0.138, 0.196, 0.006);
     const topPlateMesh = new THREE.Mesh(topPlateGeo, housingSilverMat);
     topPlateMesh.position.set(-0.135, -0.02, 0.07);
-    root.add(topPlateMesh);
+    baseGroup.add(topPlateMesh);
 
-    // Status LED on controller box
     const ledGeo = new THREE.SphereGeometry(0.005, 12, 12);
     const ledMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
     const ledMesh = new THREE.Mesh(ledGeo, ledMat);
     ledMesh.position.set(-0.07, 0.055, 0.072);
-    root.add(ledMesh);
+    baseGroup.add(ledMesh);
 
-    // Base mounting flange plate at (0, 0, 0)
     const baseFlangeGeo = new THREE.CylinderGeometry(0.058, 0.064, 0.018, 32);
     baseFlangeGeo.rotateX(Math.PI / 2);
     const baseFlangeMesh = new THREE.Mesh(baseFlangeGeo, darkSlateMat);
     baseFlangeMesh.position.set(0, 0, 0.009);
     baseFlangeMesh.receiveShadow = true;
-    root.add(baseFlangeMesh);
+    baseGroup.add(baseFlangeMesh);
   }
 
   // 1. J1 Base Yaw Turret at (0, 0, 0), rotates around +Z
@@ -436,13 +552,13 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     housingSilverMat,
     darkSlateMat,
     j1AccentMat,
-    true, // Aligned with Z axis
+    true,
     isGhost
   );
   j1Housing.assembly.position.set(0, 0, baseH * 0.52);
   j1Pivot.add(j1Housing.assembly);
 
-  // 2. J2 Shoulder Pitch at (0, 0, baseH), rotates around -Y (so pivot.rotation.y = -q2)
+  // 2. J2 Shoulder Pitch at (0, 0, baseH), rotates around -Y
   const j2Pivot = new THREE.Group();
   j2Pivot.position.set(0, 0, baseH);
   j1Pivot.add(j2Pivot);
@@ -462,12 +578,11 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     housingSilverMat,
     darkSlateMat,
     j2AccentMat,
-    false, // Aligned with Y axis
+    false,
     isGhost
   );
   j2Pivot.add(j2Housing.assembly);
 
-  // Upper arm link shell from (0, 0, 0) to (L1, 0, 0) in j2Pivot frame
   const upperArmShell = createSculptedLinkShell(
     L1,
     linkRadius,
@@ -475,7 +590,8 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     darkSlateMat,
     isGhost
   );
-  j2Pivot.add(upperArmShell);
+  upperArmGroup.add(upperArmShell);
+  j2Pivot.add(upperArmGroup);
 
   // 3. J3 Elbow Pitch at (L1, 0, 0), rotates around -Y
   const j3Pivot = new THREE.Group();
@@ -502,7 +618,6 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   );
   j3Pivot.add(j3Housing.assembly);
 
-  // Forearm link shell from (0, 0, 0) to (L2, 0, 0) in j3Pivot frame
   const forearmShell = createSculptedLinkShell(
     L2,
     linkRadius * 0.88,
@@ -510,7 +625,8 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     darkSlateMat,
     isGhost
   );
-  j3Pivot.add(forearmShell);
+  forearmGroup.add(forearmShell);
+  j3Pivot.add(forearmGroup);
 
   // 4. J4 Wrist Pitch at (L2, 0, 0), rotates around -Y
   const j4Pivot = new THREE.Group();
@@ -537,7 +653,6 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
   );
   j4Pivot.add(j4Housing.assembly);
 
-  // Wrist-to-tool link + ISO Tool Flange + Payload at (L3, 0, 0)
   const wristShell = createSculptedLinkShell(
     L3,
     linkRadius * 0.72,
@@ -545,36 +660,48 @@ function buildCadRobotRig(design: DesignSpec, isGhost: boolean): RobotRig {
     darkSlateMat,
     isGhost
   );
-  j4Pivot.add(wristShell);
+  wristGripperGroup.add(wristShell);
+
+  let leftFinger: THREE.Mesh | null = null;
+  let rightFinger: THREE.Mesh | null = null;
 
   if (!isGhost) {
-    // ISO Tool Flange disk at X = L3
-    const flangeGeo = new THREE.CylinderGeometry(0.024, 0.024, 0.012, 24);
+    // ISO Tool Flange & Parallel 2-Finger Gripper Body at X = L3
+    const flangeGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.012, 24);
     flangeGeo.rotateZ(-Math.PI / 2);
     const flangeMesh = new THREE.Mesh(flangeGeo, darkSlateMat);
-    flangeMesh.position.set(L3 - 0.004, 0, 0);
-    j4Pivot.add(flangeMesh);
+    flangeMesh.position.set(L3 - 0.012, 0, 0);
+    wristGripperGroup.add(flangeMesh);
 
-    // Payload mass cylinder at X = L3
-    const payloadRadius = Math.max(0.016, Math.min(0.032, 0.018 + (design.payload_kg || 0.4) * 0.015));
-    const payloadGeo = new THREE.CylinderGeometry(payloadRadius, payloadRadius, 0.036, 24);
-    payloadGeo.rotateZ(-Math.PI / 2);
-    const payloadMat = new THREE.MeshPhysicalMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.25,
-      transparent: true,
-      opacity: 0.82,
-      roughness: 0.2,
-      metalness: 0.2,
+    const gripperRailGeo = new THREE.BoxGeometry(0.016, 0.064, 0.022);
+    const gripperRail = new THREE.Mesh(gripperRailGeo, darkSlateMat);
+    gripperRail.position.set(L3 - 0.002, 0, 0);
+    wristGripperGroup.add(gripperRail);
+
+    const fingerGeo = new THREE.BoxGeometry(0.038, 0.006, 0.024);
+    const fingerMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      metalness: 0.7,
+      roughness: 0.25,
     });
-    const payloadMesh = new THREE.Mesh(payloadGeo, payloadMat);
-    payloadMesh.position.set(L3 + 0.014, 0, 0);
-    j4Pivot.add(payloadMesh);
+    leftFinger = new THREE.Mesh(fingerGeo, fingerMat);
+    leftFinger.position.set(L3 + 0.018, 0.022, 0);
+    wristGripperGroup.add(leftFinger);
+
+    rightFinger = new THREE.Mesh(fingerGeo, fingerMat);
+    rightFinger.position.set(L3 + 0.018, -0.022, 0);
+    wristGripperGroup.add(rightFinger);
   }
+  j4Pivot.add(wristGripperGroup);
 
   return {
     root,
+    baseGroup,
+    upperArmGroup,
+    forearmGroup,
+    wristGripperGroup,
+    leftFinger,
+    rightFinger,
     joints: {
       J1: {
         pivot: j1Pivot,
@@ -624,10 +751,15 @@ export class RobotArmViewport {
   private ghostRig: RobotRig | null = null;
   private targetLine: THREE.Line | null = null;
   private actualLine: THREE.Line | null = null;
+  private errorTetherLine: THREE.Line | null = null;
+  private waterBottle: THREE.Group | null = null;
+  private ghostBottle: THREE.Group | null = null;
+  private stationsGroup: THREE.Group | null = null;
   private eeActualMarker: THREE.Mesh;
   private eeTargetMarker: THREE.Mesh;
   private showAxisOverlays = true;
   private showGhostArm = true;
+  private isPassedDesign = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -657,7 +789,6 @@ export class RobotArmViewport {
     this.controls.target.set(0.22, 0.24, 0.0);
     this.controls.update();
 
-    // Studio three-point lighting for realistic metallic CAD shading
     const ambient = new THREE.AmbientLight(0xdbeafe, 0.85);
     this.scene.add(ambient);
 
@@ -675,17 +806,14 @@ export class RobotArmViewport {
     rimLight.position.set(0.0, 1.4, -1.8);
     this.scene.add(rimLight);
 
-    // Floor grid in Y-up Three.js world (XZ plane at Y = 0)
     const grid = new THREE.GridHelper(1.6, 16, 0x334155, 0x1e293b);
     this.scene.add(grid);
 
-    // Z-up container so MuJoCo coordinates (X forward, Y left, Z up) map 1-to-1
     this.worldZUp = new THREE.Group();
     this.worldZUp.rotation.x = -Math.PI / 2;
     this.scene.add(this.worldZUp);
 
-    // End-effector markers
-    const sphereGeo = new THREE.SphereGeometry(0.011, 16, 16);
+    const sphereGeo = new THREE.SphereGeometry(0.009, 16, 16);
     this.eeActualMarker = new THREE.Mesh(
       sphereGeo,
       new THREE.MeshBasicMaterial({ color: 0x22c55e })
@@ -711,18 +839,15 @@ export class RobotArmViewport {
   }
 
   public setDesignAndTrace(design: DesignSpec, trace: TraceData, isPassedDesign: boolean): void {
-    if (this.actualRig) {
-      this.worldZUp.remove(this.actualRig.root);
-    }
-    if (this.ghostRig) {
-      this.worldZUp.remove(this.ghostRig.root);
-    }
-    if (this.targetLine) {
-      this.worldZUp.remove(this.targetLine);
-    }
-    if (this.actualLine) {
-      this.worldZUp.remove(this.actualLine);
-    }
+    this.isPassedDesign = isPassedDesign;
+    if (this.actualRig) this.worldZUp.remove(this.actualRig.root);
+    if (this.ghostRig) this.worldZUp.remove(this.ghostRig.root);
+    if (this.targetLine) this.worldZUp.remove(this.targetLine);
+    if (this.actualLine) this.worldZUp.remove(this.actualLine);
+    if (this.errorTetherLine) this.worldZUp.remove(this.errorTetherLine);
+    if (this.waterBottle) this.worldZUp.remove(this.waterBottle);
+    if (this.ghostBottle) this.worldZUp.remove(this.ghostBottle);
+    if (this.stationsGroup) this.worldZUp.remove(this.stationsGroup);
 
     this.actualRig = buildCadRobotRig(design, false);
     this.ghostRig = buildCadRobotRig(design, true);
@@ -730,16 +855,22 @@ export class RobotArmViewport {
     this.worldZUp.add(this.actualRig.root);
     this.worldZUp.add(this.ghostRig.root);
 
+    // Build 3D 500 mL Water Bottle + Ghost Target Water Bottle
+    this.waterBottle = createWaterBottleModel(false);
+    this.ghostBottle = createWaterBottleModel(true);
+    this.ghostBottle.visible = this.showGhostArm;
+    this.worldZUp.add(this.waterBottle);
+    this.worldZUp.add(this.ghostBottle);
+
     this.setAxisOverlaysVisible(this.showAxisOverlays);
 
-    // Build 3D trajectory lines in Z-up space
     if (trace && trace.ee_des && trace.ee_des.length > 1) {
       const targetPts = trace.ee_des.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
       const targetGeo = new THREE.BufferGeometry().setFromPoints(targetPts);
       const targetMat = new THREE.LineBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.75,
+        opacity: 0.78,
       });
       this.targetLine = new THREE.Line(targetGeo, targetMat);
       this.worldZUp.add(this.targetLine);
@@ -749,11 +880,66 @@ export class RobotArmViewport {
       const actMat = new THREE.LineBasicMaterial({
         color: isPassedDesign ? 0x10b981 : 0xef4444,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.92,
       });
       this.actualLine = new THREE.Line(actGeo, actMat);
       this.worldZUp.add(this.actualLine);
+
+      // Error tether line between ee_des(t) and ee_act(t)
+      const tetherGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+      ]);
+      const tetherMat = new THREE.LineDashedMaterial({
+        color: isPassedDesign ? 0x38bdf8 : 0xef4444,
+        dashSize: 0.015,
+        gapSize: 0.01,
+        transparent: true,
+        opacity: 0.85,
+      });
+      this.errorTetherLine = new THREE.Line(tetherGeo, tetherMat);
+      this.worldZUp.add(this.errorTetherLine);
+
+      // Build Pickup Station A (at t ~ 1.15s) and Target Station B (at t ~ 4.85s)
+      const graspIdx = Math.min(trace.ee_des.length - 1, Math.floor(trace.ee_des.length * 0.19));
+      const releaseIdx = Math.min(trace.ee_des.length - 1, Math.floor(trace.ee_des.length * 0.81));
+      const pPickup = trace.ee_des[graspIdx];
+      const pTarget = trace.ee_des[releaseIdx];
+
+      this.stationsGroup = new THREE.Group();
+      // Bottle bottom is ~0.088 m below the grasp origin
+      const bottleBottomOffset = 0.088;
+      this.stationsGroup.add(
+        createStationPedestal(pPickup[0], pPickup[1], pPickup[2] - bottleBottomOffset, 0x38bdf8)
+      );
+      this.stationsGroup.add(
+        createStationPedestal(pTarget[0], pTarget[1], pTarget[2] - bottleBottomOffset, 0x10b981)
+      );
+      this.worldZUp.add(this.stationsGroup);
     }
+  }
+
+  /**
+   * Control visibility of progressive assembly stages (1..7) during the "Assembling Robot Arm" animation.
+   */
+  public setAssemblyStage(stage: number): void {
+    if (!this.actualRig) return;
+    this.actualRig.baseGroup.visible = stage >= 1;
+    this.actualRig.joints.J1.pivot.visible = stage >= 2;
+    this.actualRig.upperArmGroup.visible = stage >= 3;
+    this.actualRig.joints.J2.pivot.visible = stage >= 4;
+    this.actualRig.forearmGroup.visible = stage >= 5;
+    this.actualRig.joints.J3.pivot.visible = stage >= 5;
+    this.actualRig.joints.J4.pivot.visible = stage >= 6;
+    this.actualRig.wristGripperGroup.visible = stage >= 6;
+
+    const showSceneExtras = stage >= 7;
+    if (this.waterBottle) this.waterBottle.visible = showSceneExtras;
+    if (this.ghostBottle) this.ghostBottle.visible = showSceneExtras && this.showGhostArm;
+    if (this.stationsGroup) this.stationsGroup.visible = showSceneExtras;
+    if (this.targetLine) this.targetLine.visible = showSceneExtras;
+    if (this.actualLine) this.actualLine.visible = showSceneExtras;
+    if (this.errorTetherLine) this.errorTetherLine.visible = showSceneExtras;
   }
 
   public setAxisOverlaysVisible(visible: boolean): void {
@@ -769,10 +955,13 @@ export class RobotArmViewport {
     if (this.ghostRig) {
       this.ghostRig.root.visible = visible;
     }
+    if (this.ghostBottle) {
+      this.ghostBottle.visible = visible;
+    }
   }
 
   /**
-   * Update robot pose and joint torque-arrow status at frame `frameIdx`.
+   * Update robot pose, gripper fingers, 3D water bottle position, and joint torque-arrow status at frame `frameIdx`.
    */
   public updateFrame(trace: TraceData, frameIdx: number): void {
     if (!this.actualRig || !trace || !trace.t.length) return;
@@ -785,7 +974,6 @@ export class RobotArmViewport {
     const eeAct = trace.ee_act[idx] || [0, 0, 0];
     const eeDes = trace.ee_des[idx] || [0, 0, 0];
 
-    // Apply joint angles (J1 about +Z; J2, J3, J4 about -Y)
     this.actualRig.joints.J1.pivot.rotation.z = qAct[0];
     this.actualRig.joints.J2.pivot.rotation.y = -qAct[1];
     this.actualRig.joints.J3.pivot.rotation.y = -qAct[2];
@@ -801,6 +989,48 @@ export class RobotArmViewport {
     this.eeActualMarker.position.set(eeAct[0], eeAct[1], eeAct[2]);
     this.eeTargetMarker.position.set(eeDes[0], eeDes[1], eeDes[2]);
 
+    // Update error tether line between desired and actual EE
+    if (this.errorTetherLine) {
+      const posAttr = this.errorTetherLine.geometry.getAttribute("position") as THREE.BufferAttribute;
+      if (posAttr) {
+        posAttr.setXYZ(0, eeDes[0], eeDes[1], eeDes[2]);
+        posAttr.setXYZ(1, eeAct[0], eeAct[1], eeAct[2]);
+        posAttr.needsUpdate = true;
+        this.errorTetherLine.computeLineDistances();
+      }
+    }
+
+    // Water Bottle Pick-and-Transfer state machine
+    const graspIdx = Math.min(trace.t.length - 1, Math.floor(trace.t.length * 0.19));
+    const releaseIdx = Math.min(trace.t.length - 1, Math.floor(trace.t.length * 0.81));
+    const pPickup = trace.ee_des[graspIdx] || eeDes;
+    const pTarget = trace.ee_des[releaseIdx] || eeDes;
+    const isGrasped = idx >= graspIdx && idx <= releaseIdx;
+
+    if (this.actualRig.leftFinger && this.actualRig.rightFinger) {
+      const spread = isGrasped ? 0.0155 : 0.025;
+      this.actualRig.leftFinger.position.y = spread;
+      this.actualRig.rightFinger.position.y = -spread;
+    }
+
+    if (this.waterBottle && this.ghostBottle) {
+      if (idx < graspIdx) {
+        // Bottle waiting on Pickup Station A
+        this.waterBottle.position.set(pPickup[0], pPickup[1], pPickup[2]);
+        this.ghostBottle.position.set(pPickup[0], pPickup[1], pPickup[2]);
+      } else if (idx <= releaseIdx) {
+        // Bottle carried by the gripper!
+        // Actual bottle follows ee_act (droops if J2 saturates!); ghost bottle follows ee_des
+        this.waterBottle.position.set(eeAct[0], eeAct[1], eeAct[2]);
+        this.ghostBottle.position.set(eeDes[0], eeDes[1], eeDes[2]);
+      } else {
+        // Released at end of transfer
+        const endActual = this.isPassedDesign ? pTarget : (trace.ee_act[releaseIdx] || eeAct);
+        this.waterBottle.position.set(endActual[0], endActual[1], endActual[2]);
+        this.ghostBottle.position.set(pTarget[0], pTarget[1], pTarget[2]);
+      }
+    }
+
     // Color-code each joint's curved rotation arrows & accent ring by torque load ratio
     const jointKeys = ["J1", "J2", "J3", "J4"] as const;
     jointKeys.forEach((jName, jIdx) => {
@@ -810,21 +1040,18 @@ export class RobotArmViewport {
       const ratio = cmd / avail;
 
       if (ratio >= 0.98) {
-        // Saturated: Crimson Red
         handle.arrowMat.color.setHex(0xef4444);
         handle.arrowMat.emissive.setHex(0xdc2626);
         handle.arrowMat.emissiveIntensity = 0.95;
         handle.housingAccentMat.color.setHex(0xef4444);
         handle.housingAccentMat.emissive.setHex(0xdc2626);
       } else if (ratio >= 0.78) {
-        // High torque zone: Amber
         handle.arrowMat.color.setHex(0xf59e0b);
         handle.arrowMat.emissive.setHex(0xd97706);
         handle.arrowMat.emissiveIntensity = 0.7;
         handle.housingAccentMat.color.setHex(0xf59e0b);
         handle.housingAccentMat.emissive.setHex(0xd97706);
       } else {
-        // Nominal: Glowing Emerald Green (as in CAD reference image)
         handle.arrowMat.color.setHex(0x22c55e);
         handle.arrowMat.emissive.setHex(0x16a34a);
         handle.arrowMat.emissiveIntensity = 0.55;
