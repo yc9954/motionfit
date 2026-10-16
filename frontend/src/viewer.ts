@@ -135,32 +135,20 @@ function computeFloorToFloorTrajectoryPoint(
     eeDesFloor.set(desX, desY, desZ);
 
     if (isPassedDesign) {
-      // Upgraded robot effortlessly carries the bottle along the high arc and sets it on Floor Spot B
-      const rawDes = trace.ee_des[idx] || [0, 0, 0];
-      const rawAct = trace.ee_act[idx] || rawDes;
-      const errX = (rawAct[0] - rawDes[0]) * 0.25;
-      const errY = (rawAct[1] - rawDes[1]) * 0.25;
-      const errZ = (rawAct[2] - rawDes[2]) * 0.25;
-      eeActFloor.set(
-        desX + errX,
-        desY + errY,
-        Math.max(BOTTLE_GRASP_HEIGHT_ON_FLOOR, desZ + errZ)
-      );
+      // Upgraded robot effortlessly carries the bottle along the smooth high arc and sets it on Floor Spot B
+      eeActFloor.set(desX, desY, desZ);
     } else {
       // Un-upgraded First Robot: Shoulder motor runs out of strength as the arm reaches out with the heavy bottle!
-      // It lifts the bottle slightly off the floor at first, then sags heavily back down onto the floor halfway across.
+      // It lifts the bottle slightly off the floor at first, then sags smoothly back down onto the floor halfway across.
       isDroppedOrSagging = rawS > 0.22;
       const weakProgress = Math.min(0.54, s * 0.56);
       const actX = THREE.MathUtils.lerp(FLOOR_SPOT_A.x, FLOOR_SPOT_B.x, weakProgress) + 0.06 * Math.sin(Math.PI * weakProgress);
       const actY = THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, weakProgress);
 
-      // Lifts up to ~0.19 m initially, then under heavy torque overload sags right back down to the floor (0.088 m)
-      const initialLift = Math.sin(Math.PI * Math.min(1, rawS * 2.2)) * 0.105;
-      const overloadSag = smoothstep(Math.max(0, (rawS - 0.22) / 0.45)) * 0.105;
-      const actZ = Math.max(
-        BOTTLE_GRASP_HEIGHT_ON_FLOOR,
-        BOTTLE_GRASP_HEIGHT_ON_FLOOR + initialLift - overloadSag
-      );
+      // Lifts up to ~0.18 m initially, then under heavy torque overload sags smoothly back down to the floor (0.088 m)
+      const liftEnvelope = Math.sin(Math.PI * Math.min(1, s * 1.85));
+      const sagFactor = 1 - smoothstep(Math.max(0, (s - 0.18) / 0.36));
+      const actZ = BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.095 * liftEnvelope * sagFactor;
       eeActFloor.set(actX, actY, actZ);
     }
   } else {
@@ -173,10 +161,12 @@ function computeFloorToFloorTrajectoryPoint(
       eeActFloor.copy(eeDesFloor);
     } else {
       // Failed arm stays drooped near the middle where it ran out of strength
+      const failMidX = THREE.MathUtils.lerp(FLOOR_SPOT_A.x, FLOOR_SPOT_B.x, 0.54) + 0.06 * Math.sin(Math.PI * 0.54);
+      const failMidY = THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54);
       const failSpot = new THREE.Vector3(
-        FLOOR_SPOT_A.x + 0.04,
-        THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54),
-        BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.02 * p
+        failMidX,
+        failMidY,
+        BOTTLE_GRASP_HEIGHT_ON_FLOOR + 0.015 * p
       );
       eeActFloor.copy(failSpot);
     }
@@ -201,8 +191,9 @@ function solveArmIKForBottleGrasp(
   const q1 = Math.atan2(targetPos.y, targetPos.x);
   const rTotal = Math.sqrt(targetPos.x * targetPos.x + targetPos.y * targetPos.y);
 
-  // Keep the gripper slightly pitched down when reaching the floor so the fingers wrap cleanly around the bottle neck
-  const desiredWorldPitch = targetPos.z < 0.14 ? -0.22 : -0.08;
+  // Smoothly blend wrist pitch between floor level (-0.18 rad) and high lift (-0.08 rad) with zero discontinuity
+  const zBlend = smoothstep((targetPos.z - BOTTLE_GRASP_HEIGHT_ON_FLOOR) / 0.22);
+  const desiredWorldPitch = THREE.MathUtils.lerp(-0.18, -0.08, zBlend);
   const rWrist = Math.max(0.06, rTotal - L3 * Math.cos(desiredWorldPitch));
   const zWrist = targetPos.z - L3 * Math.sin(desiredWorldPitch);
 
@@ -953,22 +944,26 @@ export class RobotArmViewport {
   private showAxisOverlays = true;
   private showGhostArm = true;
   private isPassedDesign = false;
+  private lastWidth = 0;
+  private lastHeight = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x090b10);
 
-    const w = Math.max(320, container.clientWidth || 480);
-    const h = Math.max(260, container.clientHeight || 360);
+    const w = Math.max(320, Math.floor(container.clientWidth || 480));
+    const h = Math.max(240, Math.floor(container.clientHeight || 360));
+    this.lastWidth = w;
+    this.lastHeight = h;
 
     this.camera = new THREE.PerspectiveCamera(40, w / h, 0.02, 12.0);
     // Camera framed nicely to show the entire floor-to-floor long-distance span
     this.camera.position.set(0.84, 0.52, 0.72);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(w, h, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1024,12 +1019,15 @@ export class RobotArmViewport {
   }
 
   public handleResize(): void {
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
+    const w = Math.floor(this.container.clientWidth);
+    const h = Math.floor(this.container.clientHeight);
     if (w <= 10 || h <= 10) return;
+    if (Math.abs(w - this.lastWidth) < 2 && Math.abs(h - this.lastHeight) < 2) return;
+    this.lastWidth = w;
+    this.lastHeight = h;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
+    this.renderer.setSize(w, h, false);
   }
 
   public setDesignAndTrace(design: DesignSpec, trace: TraceData, isPassedDesign: boolean): void {
@@ -1158,9 +1156,6 @@ export class RobotArmViewport {
     if (!this.actualRig || !trace || !trace.t.length) return;
     const idx = Math.max(0, Math.min(trace.t.length - 1, frameIdx));
 
-    const tauCmd = trace.tau_cmd[idx] || [0, 0, 0, 0];
-    const tauAvail = trace.tau_avail[idx] || [1, 1, 1, 1];
-
     const links = this.currentDesign?.links || {
       base_height_m: 0.12,
       upper_arm_m: 0.30,
@@ -1229,9 +1224,11 @@ export class RobotArmViewport {
           this.waterBottle.position.copy(FLOOR_SPOT_B);
         } else {
           // Failed baseline arm leaves the bottle stranded on the floor halfway across!
+          const failMidX = THREE.MathUtils.lerp(FLOOR_SPOT_A.x, FLOOR_SPOT_B.x, 0.54) + 0.06 * Math.sin(Math.PI * 0.54);
+          const failMidY = THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54);
           this.waterBottle.position.set(
-            FLOOR_SPOT_A.x + 0.04,
-            THREE.MathUtils.lerp(FLOOR_SPOT_A.y, FLOOR_SPOT_B.y, 0.54),
+            failMidX,
+            failMidY,
             BOTTLE_GRASP_HEIGHT_ON_FLOOR
           );
         }
@@ -1239,21 +1236,29 @@ export class RobotArmViewport {
       }
     }
 
-    // Color-code each joint's curved effort arrows & accent ring by strain ratio
+    // Color-code each joint's curved effort arrows & accent ring using a smoothed 7-frame window (prevents 30Hz flicker)
     const jointKeys = ["J1", "J2", "J3", "J4"] as const;
+    const winStart = Math.max(0, idx - 3);
+    const winEnd = Math.min(trace.t.length - 1, idx + 3);
     jointKeys.forEach((jName, jIdx) => {
       const handle = this.actualRig!.joints[jName];
-      const cmd = Math.abs(tauCmd[jIdx] ?? 0);
-      const avail = Math.max(Math.abs(tauAvail[jIdx] ?? 1), 1e-4);
-      const ratio = cmd / avail;
+      let sumRatio = 0;
+      let count = 0;
+      for (let k = winStart; k <= winEnd; k++) {
+        const cmd = Math.abs(trace.tau_cmd[k]?.[jIdx] ?? 0);
+        const avail = Math.max(Math.abs(trace.tau_avail[k]?.[jIdx] ?? 1), 1e-4);
+        sumRatio += Math.min(1.0, cmd / avail);
+        count++;
+      }
+      const ratio = count > 0 ? sumRatio / count : 0;
 
-      if (ratio >= 0.98) {
+      if (ratio >= 0.92) {
         handle.arrowMat.color.setHex(0xef4444);
         handle.arrowMat.emissive.setHex(0xdc2626);
         handle.arrowMat.emissiveIntensity = 0.95;
         handle.housingAccentMat.color.setHex(0xef4444);
         handle.housingAccentMat.emissive.setHex(0xdc2626);
-      } else if (ratio >= 0.78) {
+      } else if (ratio >= 0.72) {
         handle.arrowMat.color.setHex(0xf59e0b);
         handle.arrowMat.emissive.setHex(0xd97706);
         handle.arrowMat.emissiveIntensity = 0.7;

@@ -1454,38 +1454,62 @@ function renderJointStripDom(containerId: string, trace: TraceData, idx: number)
   const el = document.getElementById(containerId);
   if (!el) return;
 
-  const tauCmd = trace.tau_cmd[idx] || [0, 0, 0, 0];
-  const tauAvail = trace.tau_avail[idx] || [1, 1, 1, 1];
   const joints = ["J1", "J2", "J3", "J4"];
+  const winStart = Math.max(0, idx - 3);
+  const winEnd = Math.min(trace.t.length - 1, idx + 3);
 
-  el.innerHTML = joints
-    .map((jName, jIdx) => {
-      const cmd = Math.abs(tauCmd[jIdx] ?? 0);
-      const avail = Math.max(Math.abs(tauAvail[jIdx] ?? 1), 1e-4);
-      const ratio = cmd / avail;
-      const pct = Math.min(100, Math.round(ratio * 100));
-      const color = ratio >= 0.98 ? "#ef4444" : ratio >= 0.78 ? "#f59e0b" : "#10b981";
-      const statusWord =
-        ratio >= 0.98
-          ? `OVERLOADED (${pct}%)`
-          : ratio >= 0.78
-          ? `Heavy (${pct}%)`
-          : `Easy (${pct}%)`;
-      const friendlyName = FRIENDLY_JOINT_NAMES[jName] || jName;
+  // Create initial DOM structure once so we never rebuild innerHTML at 30 FPS
+  if (el.children.length !== joints.length) {
+    el.innerHTML = joints
+      .map((jName) => {
+        const friendlyName = FRIENDLY_JOINT_NAMES[jName] || jName;
+        return `
+          <div class="joint-bar-item" data-joint="${jName}">
+            <div class="joint-bar-top">
+              <strong>${escapeHtml(friendlyName)}</strong>
+              <span class="joint-status-val">0%</span>
+            </div>
+            <div class="joint-meter">
+              <div class="joint-meter-fill" style="width:0%; background:#10b981;"></div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
 
-      return `
-        <div class="joint-bar-item">
-          <div class="joint-bar-top">
-            <strong>${escapeHtml(friendlyName)}</strong>
-            <span style="color:${color}; font-weight:600;">${statusWord}</span>
-          </div>
-          <div class="joint-meter">
-            <div class="joint-meter-fill" style="width:${pct}%; background:${color};"></div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  joints.forEach((jName, jIdx) => {
+    let sumRatio = 0;
+    let count = 0;
+    for (let k = winStart; k <= winEnd; k++) {
+      const cmd = Math.abs(trace.tau_cmd[k]?.[jIdx] ?? 0);
+      const avail = Math.max(Math.abs(trace.tau_avail[k]?.[jIdx] ?? 1), 1e-4);
+      sumRatio += Math.min(1.0, cmd / avail);
+      count++;
+    }
+    const ratio = count > 0 ? sumRatio / count : 0;
+    const pct = Math.min(100, Math.round(ratio * 100));
+    const color = ratio >= 0.92 ? "#ef4444" : ratio >= 0.72 ? "#f59e0b" : "#10b981";
+    const statusWord =
+      ratio >= 0.92
+        ? `MAX ${pct}%`
+        : ratio >= 0.72
+        ? `High ${pct}%`
+        : `Easy ${pct}%`;
+
+    const itemEl = el.children[jIdx] as HTMLElement | undefined;
+    if (!itemEl) return;
+    const statusEl = itemEl.querySelector(".joint-status-val") as HTMLElement | null;
+    if (statusEl) {
+      statusEl.textContent = statusWord;
+      statusEl.style.color = color;
+    }
+    const fillEl = itemEl.querySelector(".joint-meter-fill") as HTMLElement | null;
+    if (fillEl) {
+      fillEl.style.width = `${pct}%`;
+      fillEl.style.backgroundColor = color;
+    }
+  });
 }
 
 // ============================================================================
