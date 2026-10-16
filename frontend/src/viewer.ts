@@ -950,7 +950,7 @@ export class RobotArmViewport {
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x090b10);
+    this.scene.background = new THREE.Color(0xe9ecec);
 
     const w = Math.max(320, Math.floor(container.clientWidth || 480));
     const h = Math.max(240, Math.floor(container.clientHeight || 360));
@@ -967,7 +967,7 @@ export class RobotArmViewport {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 1.06;
 
     container.innerHTML = "";
     container.appendChild(this.renderer.domElement);
@@ -978,24 +978,37 @@ export class RobotArmViewport {
     this.controls.target.set(0.22, 0.16, 0.0);
     this.controls.update();
 
-    const ambient = new THREE.AmbientLight(0xdbeafe, 0.88);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.35);
     this.scene.add(ambient);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(1.4, 2.2, 1.6);
+    const keyLight = new THREE.DirectionalLight(0xfffcf5, 1.85);
+    keyLight.position.set(1.4, 2.4, 1.6);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1024, 1024);
     this.scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.1);
-    fillLight.position.set(-1.5, 1.0, -1.2);
+    const fillLight = new THREE.DirectionalLight(0xe2e8f0, 0.95);
+    fillLight.position.set(-1.5, 1.2, -1.2);
     this.scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.9);
+    const rimLight = new THREE.DirectionalLight(0x3b73ff, 0.55);
     rimLight.position.set(0.0, 1.4, -1.8);
     this.scene.add(rimLight);
 
-    const grid = new THREE.GridHelper(1.8, 18, 0x334155, 0x18181b);
+    // Architectural studio floor slab + Obolus grid
+    const floorGeo = new THREE.PlaneGeometry(2.2, 2.2);
+    floorGeo.rotateX(-Math.PI / 2);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0xf4f6f7,
+      roughness: 0.92,
+      metalness: 0.02,
+    });
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.position.y = -0.001;
+    floorMesh.receiveShadow = true;
+    this.scene.add(floorMesh);
+
+    const grid = new THREE.GridHelper(1.8, 18, 0xb8bec2, 0xd8dddf);
     this.scene.add(grid);
 
     this.worldZUp = new THREE.Group();
